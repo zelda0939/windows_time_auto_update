@@ -1,0 +1,13 @@
+{
+    "auto_sync": true,
+    "interval_value": 5,
+    "interval_unit": "minutes",
+    "selected_server": "tock.stdtime.gov.tw",
+    "use_fallback": true,
+    "custom_servers": [],
+    "auto_start": true,
+    "start_minimized": false,
+    "minimize_to_tray": true,
+    "show_notifications": true,
+    "sync_on_startup": true
+}

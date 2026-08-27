@@ -1,0 +1,3 @@
+# Windows 自動網路校時工具依賴套件
+pystray>=0.19.5
+Pillow>=10.0.0
