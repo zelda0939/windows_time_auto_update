@@ -1,7 +1,5 @@
 @echo off
-chcp 65001 >nul
-
-:: 檢查是否具備系統管理員權限
+:: Check Administrator Privileges
 net session >nul 2>&1
 if %errorLevel% == 0 (
     start "" pythonw "%~dp0main.py" %*

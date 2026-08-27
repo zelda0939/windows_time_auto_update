@@ -1,14 +1,17 @@
 @echo off
-chcp 65001 >nul
-title 打包 Windows 網路自動校時工具為獨立 EXE
+title Build WindowsTimeAutoUpdate EXE
 
-echo 正在檢查 PyInstaller...
-python -m pip install pyinstaller Pillow pystray
+echo [*] Generating icon...
+python -c "from tray_icon import create_default_icon_image; img = create_default_icon_image(128, 128); img.save('app_icon.ico', format='ICO', sizes=[(16,16), (32,32), (48,48), (64,64), (128,128)])"
 
-echo.
-echo 正在編譯打包 WindowsTimeAutoUpdate.exe...
-pyinstaller --noconsole --onefile --name "WindowsTimeAutoUpdate" --uac-admin main.py
+echo [*] Compiling Native WindowsTimeAutoUpdate.exe...
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /target:winexe /optimize+ /platform:anycpu /win32icon:app_icon.ico /out:WindowsTimeAutoUpdate.exe launcher.cs
 
-echo.
-echo 打包完成！請至 dist 目錄查看 WindowsTimeAutoUpdate.exe
+if %errorlevel% equ 0 (
+    echo.
+    echo [+] Successfully created WindowsTimeAutoUpdate.exe!
+) else (
+    echo.
+    echo [-] Compilation failed.
+)
 pause

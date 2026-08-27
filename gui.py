@@ -1139,7 +1139,12 @@ class ModernTimeSyncGUI:
             "提升管理員權限",
             "是否要以系統管理員身分重新啟動本程式？\n（只有管理員權限才能直接寫入修改 Windows 系統時鐘）",
         ):
-            ok = request_admin_elevation()
+            try:
+                from main import release_single_instance
+                release_single_instance()
+            except Exception:
+                pass
+            ok = request_admin_elevation(["--restarting"])
             if ok:
                 self.quit_app()
 

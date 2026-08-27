@@ -41,50 +41,41 @@
 
 ## 🚀 快速開始
 
-### 方式 1：直接執行（推薦）
-以系統管理員權限雙擊執行專案目錄下的：
+### 方式 1：直接執行 WindowsTimeAutoUpdate.exe（最推薦）
+雙擊專案目錄下的：
 ```bash
-run_admin.bat
+WindowsTimeAutoUpdate.exe
 ```
-*(或直接執行 `run.bat`，若未具備管理員權限，可於介面點擊提權按鈕)*
+*(💡 雙擊 `create_desktop_shortcut.bat`，可一鍵在桌面建立專屬時鐘圖示的快捷方式！)*
 
 ---
 
-### 方式 2：使用命令列啟動
-
-安裝依賴套件（僅需安裝一次）：
+### 方式 2：使用腳本啟動
+雙擊執行專案目錄下的：
 ```bash
-pip install -r requirements.txt
+run_admin.bat
 ```
 
-啟動 GUI 視窗：
+---
+
+### 方式 3：使用命令列啟動
 ```bash
 python main.py
 ```
-
-以最小化模式啟動（直接常駐至右下角系統匣）：
+以最小化模式啟動（直接常駐至系統匣）：
 ```bash
 python main.py --minimized
 ```
 
-命令列單次校時模式（無需開啟 UI，適合批次檔或排程工作呼叫）：
-```bash
-python main.py --sync-once
-# 或指定伺服器：
-python main.py --sync-once --server tock.stdtime.gov.tw
-```
-
 ---
 
-## 🛠️ 打包為獨立 EXE 執行檔
+## 🛠️ 自行重新編譯 WindowsTimeAutoUpdate.exe
 
-若希望將本工具編譯為單一 `.exe` 執行檔，方便攜帶至其他未安裝 Python 的 Windows 電腦使用：
-
-雙擊執行專案目錄下的：
+若需要重新編譯原生 EXE，只需雙擊：
 ```bash
 build_exe.bat
 ```
-完成後，產出的獨立執行檔位於 `dist/WindowsTimeAutoUpdate.exe`。
+腳本將自動調用 Windows 內建的 .NET 編譯器生成專屬時鐘圖示的 `WindowsTimeAutoUpdate.exe`。
 
 ---
 
@@ -101,7 +92,7 @@ build_exe.bat
 | `autostart.py` | Windows 開機自動啟動登錄檔管理 |
 | `tray_icon.py` | 系統匣圖示 (pystray) 與右鍵選單 |
 | `run.bat` / `run_admin.bat` | 一鍵啟動批次檔 |
-| `build_exe.bat` | PyInstaller 單檔編譯打包腳本 |
+| `build.py` / `build_exe.bat` | PyInstaller 單檔編譯打包 Python 核心與批次腳本 |
 | `requirements.txt` | Python 依賴套件清單 |
 
 ---

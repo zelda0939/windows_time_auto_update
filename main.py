@@ -7,6 +7,7 @@ import argparse
 import ctypes
 import os
 import sys
+import time
 import tkinter as tk
 
 from autostart import is_autostart_enabled
@@ -16,6 +17,7 @@ from time_syncer import TimeSyncer, is_admin, request_admin_elevation
 
 MUTEX_NAME = "Global\\WindowsTimeAutoUpdate_SingleInstance_Mutex"
 ERROR_ALREADY_EXISTS = 183
+_CURRENT_MUTEX = None
 
 # 設置 Windows 專屬 AppUserModelID，使工作列獨立顯示應用程式
 try:
@@ -25,16 +27,42 @@ except Exception:
     pass
 
 
-def check_single_instance():
-    """透過 Windows Mutex 確保程式只有單一執行個體在背景運作"""
-    try:
+def acquire_single_instance(timeout_sec: float = 2.5):
+    """
+    透過 Windows Mutex 確保程式只有單一執行個體在背景運作
+    支援在重啟/提權交接時等待舊進程釋放鎖 (timeout_sec 秒)
+    """
+    global _CURRENT_MUTEX
+    start_t = time.monotonic()
+    
+    while True:
         mutex = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
         last_error = ctypes.windll.kernel32.GetLastError()
-        if last_error == ERROR_ALREADY_EXISTS:
+        
+        if last_error != ERROR_ALREADY_EXISTS:
+            _CURRENT_MUTEX = mutex
+            return mutex
+        
+        # 關閉本次衝突的暫存 handle
+        if mutex:
+            ctypes.windll.kernel32.CloseHandle(mutex)
+        
+        # 若超時則判定已有其他實例正在運行
+        if time.monotonic() - start_t >= timeout_sec:
             return None
-        return mutex
-    except Exception:
-        return 1  # 若建立失敗仍允許執行
+        
+        time.sleep(0.15)
+
+
+def release_single_instance():
+    """釋放並關閉當前進程持有的 Single Instance Mutex"""
+    global _CURRENT_MUTEX
+    if _CURRENT_MUTEX and _CURRENT_MUTEX != 1:
+        try:
+            ctypes.windll.kernel32.CloseHandle(_CURRENT_MUTEX)
+        except Exception:
+            pass
+        _CURRENT_MUTEX = None
 
 
 def run_sync_once_cli(server: str = "tock.stdtime.gov.tw"):
@@ -81,6 +109,16 @@ def main():
         action="store_true",
         help="自動請求 Windows UAC 管理員提權",
     )
+    parser.add_argument(
+        "--restarting",
+        action="store_true",
+        help="由舊進程重啟/提權啟動之標記",
+    )
+    parser.add_argument(
+        "--no-auto-elevate",
+        action="store_true",
+        help="不要在啟動時自動彈出 UAC 提權請求",
+    )
     args = parser.parse_args()
 
     # 1. 處理 CLI 單次校時模式
@@ -96,15 +134,25 @@ def main():
 
     # 2. 自動提權參數檢查
     if args.elevate and not is_admin():
-        clean_args = [a for a in sys.argv[1:] if a != "--elevate"]
+        clean_args = [a for a in sys.argv[1:] if a != "--elevate"] + ["--restarting"]
         request_admin_elevation(clean_args)
         sys.exit(0)
 
-    # 3. 單一實例檢查
-    mutex = check_single_instance()
+    # 3. 若為打包後的 EXE 或直接啟動且非管理員，自動嘗試進行 UAC 提權啟動
+    if not is_admin() and not args.restarting and not args.no_auto_elevate:
+        forward_args = [a for a in sys.argv[1:]] + ["--restarting"]
+        elevated = request_admin_elevation(forward_args)
+        if elevated:
+            # 提權程序已成功喚起，原非管理員進程安靜結束
+            sys.exit(0)
+        # 若使用者在 UAC 對話框選擇「否」，則繼續以非管理員（唯讀模式）開啟
+
+    # 4. 單一實例檢查 (支援交接等待)
+    wait_time = 3.0 if args.restarting else 0.5
+    mutex = acquire_single_instance(timeout_sec=wait_time)
+    
     if mutex is None:
         # 已有相同程式在背景執行
-        # 彈出對話框提示
         root = tk.Tk()
         root.withdraw()
         from tkinter import messagebox
@@ -116,10 +164,10 @@ def main():
         root.destroy()
         sys.exit(0)
 
-    # 4. 載入設定
+    # 5. 載入設定
     config_mgr = ConfigManager()
 
-    # 5. 建立並啟動 GUI
+    # 6. 建立並啟動 GUI
     root = tk.Tk()
 
     # 若需要最小化啟動 (例如開機自動啟動)，先隱藏視窗
@@ -144,8 +192,7 @@ def main():
     try:
         root.mainloop()
     finally:
-        if mutex and mutex != 1:
-            ctypes.windll.kernel32.CloseHandle(mutex)
+        release_single_instance()
 
 
 if __name__ == "__main__":
