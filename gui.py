@@ -64,6 +64,7 @@ class ModernTimeSyncGUI:
             interval_value=self.config_mgr.get("interval_value", 30),
             interval_unit=self.config_mgr.get("interval_unit", "minutes"),
             server_provider=self._get_current_server_target,
+            threshold_provider=self._get_current_threshold,
             on_sync_start=self._on_sync_start_callback,
             on_sync_finish=self._on_sync_finish_callback,
             on_tick=self._on_tick_callback,
@@ -89,6 +90,12 @@ class ModernTimeSyncGUI:
         )
         self.var_interval_unit = tk.StringVar(
             value=self.config_mgr.get("interval_unit", "minutes")
+        )
+        self.var_threshold_enabled = tk.BooleanVar(
+            value=self.config_mgr.get("threshold_sync_enabled", False)
+        )
+        self.var_threshold_sec = tk.StringVar(
+            value=str(self.config_mgr.get("threshold_seconds", 60))
         )
         self.var_selected_server = tk.StringVar(
             value=self.config_mgr.get("selected_server", "tock.stdtime.gov.tw")
@@ -470,6 +477,61 @@ class ModernTimeSyncGUI:
             )
             btn.pack(side="left", padx=(0, 4))
 
+        # 智慧閾值校時模式 (誤差超過設定秒數/1分鐘才同步)
+        thresh_card = tk.Frame(body, bg="#111827", bd=1, relief="solid", highlightbackground=CARD_BORDER, highlightthickness=1)
+        thresh_card.pack(fill="x", pady=(6, 0))
+
+        thresh_inner = tk.Frame(thresh_card, bg="#111827", padx=8, pady=6)
+        thresh_inner.pack(fill="x")
+
+        chk_thresh = tk.Checkbutton(
+            thresh_inner,
+            text="僅在時間誤差超過閾值時才寫入時鐘",
+            variable=self.var_threshold_enabled,
+            font=("Microsoft JhengHei UI", 8, "bold"),
+            fg="#38BDF8",
+            bg="#111827",
+            activebackground="#111827",
+            activeforeground="#38BDF8",
+            selectcolor=INPUT_BG,
+            command=self._on_threshold_toggled,
+        )
+        chk_thresh.pack(anchor="w")
+
+        thresh_row = tk.Frame(thresh_inner, bg="#111827")
+        thresh_row.pack(fill="x", pady=(3, 0))
+
+        tk.Label(
+            thresh_row,
+            text="  └ 誤差超過：",
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_SECONDARY,
+            bg="#111827",
+        ).pack(side="left")
+
+        ent_thresh = tk.Entry(
+            thresh_row,
+            textvariable=self.var_threshold_sec,
+            width=5,
+            font=("Consolas", 9, "bold"),
+            bg=INPUT_BG,
+            fg=TEXT_PRIMARY,
+            insertbackground=TEXT_PRIMARY,
+            bd=1,
+            relief="solid",
+            highlightbackground=CARD_BORDER,
+            justify="center",
+        )
+        ent_thresh.pack(side="left", padx=4)
+
+        tk.Label(
+            thresh_row,
+            text="秒 (預設 60 秒 / 1 分鐘)",
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_MUTED,
+            bg="#111827",
+        ).pack(side="left")
+
     def _build_ntp_card(self, parent):
         """建構右半部：NTP 伺服器設定卡片"""
         card = self._create_card(parent, title="🌐 NTP 伺服器設定")
@@ -755,6 +817,32 @@ class ModernTimeSyncGUI:
 
         self.root.after(0, _update)
 
+    def _get_current_threshold(self) -> Optional[float]:
+        """取得供排程器查詢的誤差閾值秒數"""
+        if self.var_threshold_enabled.get():
+            try:
+                val = float(self.var_threshold_sec.get())
+                return val if val > 0 else 60.0
+            except ValueError:
+                return 60.0
+        return None
+
+    def _on_threshold_toggled(self):
+        """誤差閾值模式 Checkbox 事件"""
+        enabled = self.var_threshold_enabled.get()
+        self.config_mgr.set("threshold_sync_enabled", enabled)
+        if enabled:
+            try:
+                sec = float(self.var_threshold_sec.get())
+            except ValueError:
+                sec = 60.0
+            self.log(
+                f"已啟用智慧閾值模式：系統時鐘誤差超過 {sec:.0f} 秒 (1分鐘) 時才寫入同步",
+                level="info",
+            )
+        else:
+            self.log("已停用智慧閾值模式：定時自動強制寫入同步", level="info")
+
     def _on_sync_finish_callback(self, result: Dict):
         """同步完成回呼"""
 
@@ -763,20 +851,32 @@ class ModernTimeSyncGUI:
                 text="⚡ 立即同步時間", state="normal", bg=ACCENT_BLUE
             )
             if result.get("success"):
-                self.var_last_sync.set(result.get("time_str", ""))
-                self.var_offset_ms.set(f"{result.get('offset_ms')} ms")
-                self.var_delay_ms.set(f"{result.get('delay_ms')} ms")
-                msg = f"校時成功！伺服器: {result.get('server')}，網路延遲: {result.get('delay_ms')} ms，修正偏差: {result.get('offset_ms')} ms"
-                self.log(msg, level="success")
+                offset_ms = result.get("offset_ms")
+                delay_ms = result.get("delay_ms")
+                time_str = result.get("time_str", "")
 
-                if self.var_show_notifications.get():
-                    self.tray_mgr.notify(
-                        f"校時成功！已修正時間誤差 {result.get('offset_ms')} ms",
-                        title="Windows 自動校時工具",
-                    )
+                self.var_offset_ms.set(f"{offset_ms} ms" if offset_ms is not None else "--")
+                self.var_delay_ms.set(f"{delay_ms} ms" if delay_ms is not None else "--")
+
+                if result.get("skipped"):
+                    # 誤差未達閾值，略過寫入
+                    self.var_last_sync.set(f"{time_str} (精準)")
+                    msg = result.get("message", "時間偏差小於閾值，略過寫入")
+                    self.log(f"ℹ️ {msg}", level="warning")
+                else:
+                    # 成功寫入
+                    self.var_last_sync.set(time_str)
+                    msg = result.get("message", "校時成功")
+                    self.log(f"✅ {msg}", level="success")
+
+                    if self.var_show_notifications.get():
+                        self.tray_mgr.notify(
+                            f"校時成功！已修正時間誤差 {offset_ms} ms",
+                            title="Windows 自動校時工具",
+                        )
             else:
                 err = result.get("error", "未知錯誤")
-                self.log(f"校時失敗: {err}", level="error")
+                self.log(f"❌ 校時失敗: {err}", level="error")
 
                 if result.get("need_admin"):
                     self.log(
@@ -807,8 +907,8 @@ class ModernTimeSyncGUI:
         return fallback_list
 
     def trigger_sync_now(self):
-        """手動觸發立即同步"""
-        self.scheduler.trigger_now_async()
+        """手動觸發立即同步 (強制寫入)"""
+        self.scheduler.trigger_now_async(force=True)
 
     def toggle_auto_sync(self):
         """切換自動同步啟用/暫停狀態"""
@@ -853,7 +953,7 @@ class ModernTimeSyncGUI:
         self._apply_schedule_settings()
 
     def _apply_schedule_settings(self):
-        """套用並儲存頻率設定"""
+        """套用並儲存頻率與閾值設定"""
         try:
             val = int(self.var_interval_val.get())
             if val <= 0:
@@ -864,14 +964,31 @@ class ModernTimeSyncGUI:
             )
             return
 
+        try:
+            thresh_val = int(self.var_threshold_sec.get())
+            if thresh_val < 0:
+                raise ValueError("閾值數值不能小於 0")
+        except ValueError:
+            messagebox.showerror(
+                "設定錯誤", "誤差閾值請輸入大於或等於 0 的秒數！"
+            )
+            return
+
         unit = self.var_interval_unit.get()
         self.config_mgr.set("interval_value", val)
         self.config_mgr.set("interval_unit", unit)
+        self.config_mgr.set("threshold_sync_enabled", self.var_threshold_enabled.get())
+        self.config_mgr.set("threshold_seconds", thresh_val)
 
         self.scheduler.update_interval(val, unit)
         unit_str = self.var_unit_display.get()
+        thresh_info = (
+            f" (已開啟閾值保護：誤差超過 {thresh_val} 秒才寫入)"
+            if self.var_threshold_enabled.get()
+            else " (強制寫入模式)"
+        )
         self.log(
-            f"已成功套用更新頻率設定：每 {val} {unit_str} (總計 {self.scheduler.interval_seconds} 秒)",
+            f"已成功套用設定：每 {val} {unit_str}{thresh_info}",
             level="success",
         )
 

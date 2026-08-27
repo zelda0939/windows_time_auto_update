@@ -7,7 +7,9 @@
 ## 關鍵技術決策與架構
 - **程式語言與版本**：Python 3.14 + Tkinter + Windows Win32 API (`ctypes.windll.kernel32.SetSystemTime`)
 - **NTP 協定**：純 Python RFC 5905 SNTP/NTP 客戶端實作，具備高精準度、網路往返延遲補償（Delay）與時間位移（Offset）計算，支援多伺服器容錯備援。
-- **背景排程**：非同步 Thread Timer，支援自訂間隔（秒/分/小時/天）定時更新，UI 倒數計時與狀態回報。
+- **背景排程與智慧校時**：
+  - 非同步 Thread Timer，支援自訂間隔（秒/分/小時/天）定時更新，UI 倒數計時與狀態回報。
+  - **智慧誤差閾值模式 (Threshold-based Sync)**：支援設定誤差閾值（預設 60 秒 / 1 分鐘），僅在系統時間與 NTP 伺服器時間誤差超過此閾值時才進行寫入更新；若誤差小於閾值則略過寫入，減少時鐘跳動。
 - **權限管理與無黑框常駐**：
   - 檢測 Administrator 權限（`IsUserAnAdmin`），未提升時支援自動以 UAC 提權執行。
   - 全面採用 `pythonw.exe` 配合 PowerShell `-WindowStyle Hidden` 啟動，徹底避免啟動時留下黑色命令提示字元 (cmd/python.exe) 視窗。

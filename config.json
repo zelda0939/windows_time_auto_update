@@ -9,5 +9,7 @@
     "start_minimized": false,
     "minimize_to_tray": true,
     "show_notifications": true,
-    "sync_on_startup": true
+    "sync_on_startup": true,
+    "threshold_sync_enabled": true,
+    "threshold_seconds": 60
 }

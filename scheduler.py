@@ -27,6 +27,7 @@ class TimeSyncScheduler:
         interval_value: int = 30,
         interval_unit: str = "minutes",
         server_provider: Optional[Callable[[], Union[str, List[str]]]] = None,
+        threshold_provider: Optional[Callable[[], Optional[float]]] = None,
         on_sync_start: Optional[Callable[[], None]] = None,
         on_sync_finish: Optional[Callable[[Dict], None]] = None,
         on_tick: Optional[Callable[[float, str], None]] = None,
@@ -38,6 +39,7 @@ class TimeSyncScheduler:
         :param interval_value: 間隔數值 (預設 30)
         :param interval_unit: 間隔單位 ("seconds", "minutes", "hours", "days", 預設 "minutes")
         :param server_provider: 回傳目前選擇之 NTP 伺服器 (單一或列表) 的回呼函式
+        :param threshold_provider: 回傳目前設定之誤差閾值 (秒數，若無則為 None) 的回呼函式
         :param on_sync_start: 同步即將開始時觸發的回呼
         :param on_sync_finish: 同步完成時觸發的回呼 (帶入同步結果字典)
         :param on_tick: 每秒倒數計時觸發的回呼 (帶入剩餘秒數與格式化字串)
@@ -48,6 +50,7 @@ class TimeSyncScheduler:
             interval_unit if interval_unit in UNIT_MULTIPLIERS else "minutes"
         )
         self.server_provider = server_provider
+        self.threshold_provider = threshold_provider
 
         self.on_sync_start = on_sync_start
         self.on_sync_finish = on_sync_finish
@@ -137,11 +140,14 @@ class TimeSyncScheduler:
                 seconds=self.interval_seconds
             )
 
-    def trigger_now_async(self):
-        """手動非同步立即觸發一次同步"""
-
+    def trigger_now_async(self, force: bool = True):
+        """
+        手動非同步立即觸發一次同步
+        
+        :param force: 是否強制寫入系統時間 (忽略閾值判斷，預設 True)
+        """
         def _do_manual_sync():
-            self._perform_sync()
+            self._perform_sync(ignore_threshold=force)
             with self._lock:
                 if self._running and not self._paused:
                     self._next_sync_time = datetime.now() + timedelta(
@@ -194,7 +200,16 @@ class TimeSyncScheduler:
                 pass
         return "tock.stdtime.gov.tw"
 
-    def _perform_sync(self):
+    def _get_threshold_seconds(self) -> Optional[float]:
+        """取得目前設定的誤差閾值"""
+        if self.threshold_provider:
+            try:
+                return self.threshold_provider()
+            except Exception:
+                pass
+        return None
+
+    def _perform_sync(self, ignore_threshold: bool = False):
         """執行時間同步程序並觸發相關回呼"""
         if self._is_syncing:
             return
@@ -209,7 +224,8 @@ class TimeSyncScheduler:
                 print(f"on_sync_start 回呼發生例外: {e}")
 
         server = self._get_target_servers()
-        result = self.syncer.sync_time(server)
+        threshold = None if ignore_threshold else self._get_threshold_seconds()
+        result = self.syncer.sync_time(server, threshold_seconds=threshold)
 
         with self._lock:
             self._last_sync_time = datetime.now()

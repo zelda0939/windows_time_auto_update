@@ -22,6 +22,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "minimize_to_tray": True,
     "show_notifications": True,
     "sync_on_startup": True,
+    "threshold_sync_enabled": False,
+    "threshold_seconds": 60,
 }
 
 

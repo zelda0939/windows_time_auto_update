@@ -107,11 +107,16 @@ class TimeSyncer:
     def __init__(self, timeout: float = 3.0):
         self.ntp_client = NTPClient(timeout=timeout)
 
-    def sync_time(self, server_or_servers: Union[str, List[str]]) -> Dict:
+    def sync_time(
+        self,
+        server_or_servers: Union[str, List[str]],
+        threshold_seconds: Optional[float] = None,
+    ) -> Dict:
         """
         向 NTP 伺服器查詢並更新 Windows 系統時間
 
         :param server_or_servers: 單一 NTP 伺服器位址或伺服器列表
+        :param threshold_seconds: 誤差閾值 (秒)。若提供且誤差小於此值，則略過寫入
         :return: 同步結果字典
         """
         # 1. 查詢 NTP 時間
@@ -126,17 +131,45 @@ class TimeSyncer:
                 "server": query_result.get("server"),
                 "error": query_result.get("error", "未知 NTP 錯誤"),
                 "offset_ms": None,
+                "offset_sec": None,
                 "delay_ms": None,
                 "time_str": None,
+                "skipped": False,
             }
 
         server_name = query_result.get("server")
         offset_ms = query_result.get("offset_ms")
+        offset_sec = query_result.get("offset_sec", 0.0)
         delay_ms = query_result.get("delay_ms")
         corrected_utc = query_result.get("corrected_utc_dt")
         corrected_local = query_result.get("corrected_local_dt")
+        local_time_str = (
+            corrected_local.strftime("%Y-%m-%d %H:%M:%S")
+            if corrected_local
+            else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
 
-        # 2. 檢查管理員權限
+        abs_offset_sec = abs(offset_sec) if offset_sec is not None else 0.0
+
+        # 2. 若啟用閾值模式且誤差小於設定秒數 (例如 60 秒)，則略過寫入
+        if threshold_seconds is not None and threshold_seconds > 0 and abs_offset_sec < threshold_seconds:
+            return {
+                "success": True,
+                "skipped": True,
+                "server": server_name,
+                "server_ip": query_result.get("server_ip"),
+                "offset_ms": offset_ms,
+                "offset_sec": offset_sec,
+                "delay_ms": delay_ms,
+                "time_str": local_time_str,
+                "threshold_sec": threshold_seconds,
+                "message": (
+                    f"檢測完成：時間偏差為 {abs_offset_sec:.3f} 秒 (小於設定閾值 {threshold_seconds:.0f} 秒)，"
+                    f"系統時鐘準確，略過本次寫入。"
+                ),
+            }
+
+        # 3. 檢查管理員權限
         if not is_admin():
             return {
                 "success": False,
@@ -144,15 +177,13 @@ class TimeSyncer:
                 "error": "權限不足：需要【系統管理員權限】才能更新 Windows 系統時鐘。請以管理員身分重新執行程式。",
                 "need_admin": True,
                 "offset_ms": offset_ms,
+                "offset_sec": offset_sec,
                 "delay_ms": delay_ms,
-                "time_str": (
-                    corrected_local.strftime("%Y-%m-%d %H:%M:%S")
-                    if corrected_local
-                    else ""
-                ),
+                "time_str": local_time_str,
+                "skipped": False,
             }
 
-        # 3. 呼叫 Windows API 寫入時間
+        # 4. 呼叫 Windows API 寫入時間
         write_success = set_windows_time(corrected_utc)
         if not write_success:
             # 若 SetSystemTime 失敗，嘗試備援方案 w32tm
@@ -164,28 +195,29 @@ class TimeSyncer:
                     "server": server_name,
                     "error": f"寫入系統時間失敗 (Win32 Error Code: {err_code})",
                     "offset_ms": offset_ms,
+                    "offset_sec": offset_sec,
                     "delay_ms": delay_ms,
-                    "time_str": (
-                        corrected_local.strftime("%Y-%m-%d %H:%M:%S")
-                        if corrected_local
-                        else ""
-                    ),
+                    "time_str": local_time_str,
+                    "skipped": False,
                 }
 
-        local_time_str = (
-            corrected_local.strftime("%Y-%m-%d %H:%M:%S")
-            if corrected_local
-            else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = (
+            f"成功同步時間！時間偏差 {abs_offset_sec:.3f} 秒已超過閾值 ({threshold_seconds:.0f} 秒)，已更新系統時鐘。"
+            if (threshold_seconds and threshold_seconds > 0)
+            else f"成功同步時間！伺服器: {server_name}，網路延遲: {delay_ms} ms，修正時間誤差: {offset_ms} ms"
         )
 
         return {
             "success": True,
+            "skipped": False,
             "server": server_name,
             "server_ip": query_result.get("server_ip"),
             "offset_ms": offset_ms,
+            "offset_sec": offset_sec,
             "delay_ms": delay_ms,
             "time_str": local_time_str,
-            "message": f"成功同步時間！伺服器: {server_name}，網路延遲: {delay_ms} ms，修正時間誤差: {offset_ms} ms",
+            "threshold_sec": threshold_seconds,
+            "message": msg,
         }
 
     def _fallback_w32tm_sync(self) -> bool:

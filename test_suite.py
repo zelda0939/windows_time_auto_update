@@ -111,6 +111,28 @@ class TestScheduler(unittest.TestCase):
         s.stop()
 
 
+class TestThresholdSync(unittest.TestCase):
+    """智慧誤差閾值校時測試"""
+
+    def test_threshold_sync_skipped_when_accurate(self):
+        """測試當系統時鐘偏差小於 60 秒時，應跳過寫入 (skipped=True)"""
+        syncer = TimeSyncer()
+        # 設定閾值為 60 秒 (目前電腦時鐘與 Google NTP 誤差通常只有幾毫秒到幾秒，遠小於 60 秒)
+        res = syncer.sync_time("time.google.com", threshold_seconds=60.0)
+        self.assertTrue(res["success"])
+        self.assertTrue(res["skipped"])
+        self.assertIn("小於設定閾值", res["message"])
+        self.assertEqual(res["threshold_sec"], 60.0)
+
+    def test_threshold_sync_not_skipped_when_exceeded(self):
+        """測試當閾值為 0.0000001 秒 (極小) 時，應判定為超過閾值 (skipped=False)"""
+        syncer = TimeSyncer()
+        res = syncer.sync_time("time.google.com", threshold_seconds=0.0000001)
+        self.assertIn("success", res)
+        # 不論是否因為非管理員報錯，skipped 必須為 False
+        self.assertFalse(res.get("skipped", True))
+
+
 class TestSystemTimeAndAutostart(unittest.TestCase):
     """系統時間與開機啟動模組測試"""
 
