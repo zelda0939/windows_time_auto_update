@@ -2,7 +2,7 @@
     "auto_sync": true,
     "interval_value": 1,
     "interval_unit": "minutes",
-    "selected_server": "tock.stdtime.gov.tw",
+    "selected_server": "time.cloudflare.com",
     "use_fallback": true,
     "custom_servers": [],
     "auto_start": true,

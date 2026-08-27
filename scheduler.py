@@ -1,6 +1,7 @@
 """
 背景定時排程模組 (scheduler.py)
 負責管理自訂更新頻率、倒數計時計算、定時觸發同步回呼，並提供完全非阻塞的背景線程運行。
+注意：排程內部全面採用單調時鐘 (time.monotonic)，避免受 Windows 系統時鐘調整、跳動或校時影響。
 """
 
 import threading
@@ -19,7 +20,7 @@ UNIT_MULTIPLIERS = {
 
 
 class TimeSyncScheduler:
-    """自動時間同步排程器"""
+    """自動時間同步排程器 (基於 time.monotonic 單調時鐘)"""
 
     def __init__(
         self,
@@ -63,7 +64,8 @@ class TimeSyncScheduler:
         self._lock = threading.Lock()
         self._is_syncing = False
 
-        self._next_sync_time: Optional[datetime] = None
+        # 使用 time.monotonic() 作為基準，不受系統時鐘調整影響
+        self._next_sync_mono: Optional[float] = None
         self._last_sync_time: Optional[datetime] = None
         self._last_result: Optional[Dict] = None
 
@@ -87,11 +89,9 @@ class TimeSyncScheduler:
             self.interval_value = max(1, value)
             if unit in UNIT_MULTIPLIERS:
                 self.interval_unit = unit
-            # 重新計算下次同步時間
+            # 重新計算下次同步單調時間戳
             if self._running and not self._paused:
-                self._next_sync_time = datetime.now() + timedelta(
-                    seconds=self.interval_seconds
-                )
+                self._next_sync_mono = time.monotonic() + self.interval_seconds
 
     def start(self, sync_immediately: bool = False):
         """啟動背景排程線程"""
@@ -104,11 +104,9 @@ class TimeSyncScheduler:
             self._stop_event.clear()
 
             if sync_immediately:
-                self._next_sync_time = datetime.now()
+                self._next_sync_mono = time.monotonic()
             else:
-                self._next_sync_time = datetime.now() + timedelta(
-                    seconds=self.interval_seconds
-                )
+                self._next_sync_mono = time.monotonic() + self.interval_seconds
 
             self._thread = threading.Thread(
                 target=self._run_loop, daemon=True, name="TimeSyncSchedulerThread"
@@ -136,9 +134,7 @@ class TimeSyncScheduler:
         """恢復排程"""
         with self._lock:
             self._paused = False
-            self._next_sync_time = datetime.now() + timedelta(
-                seconds=self.interval_seconds
-            )
+            self._next_sync_mono = time.monotonic() + self.interval_seconds
 
     def trigger_now_async(self, force: bool = True):
         """
@@ -150,9 +146,7 @@ class TimeSyncScheduler:
             self._perform_sync(ignore_threshold=force)
             with self._lock:
                 if self._running and not self._paused:
-                    self._next_sync_time = datetime.now() + timedelta(
-                        seconds=self.interval_seconds
-                    )
+                    self._next_sync_mono = time.monotonic() + self.interval_seconds
 
         t = threading.Thread(
             target=_do_manual_sync, daemon=True, name="ManualSyncThread"
@@ -160,11 +154,11 @@ class TimeSyncScheduler:
         t.start()
 
     def get_remaining_seconds(self) -> float:
-        """取得距離下次同步的剩餘秒數"""
-        if not self._running or self._paused or self._next_sync_time is None:
+        """取得距離下次同步的剩餘物理秒數 (基於單調時鐘)"""
+        if not self._running or self._paused or self._next_sync_mono is None:
             return 0.0
-        now = datetime.now()
-        rem = (self._next_sync_time - now).total_seconds()
+        now_mono = time.monotonic()
+        rem = self._next_sync_mono - now_mono
         return max(0.0, rem)
 
     def get_remaining_formatted(self) -> str:
@@ -184,10 +178,12 @@ class TimeSyncScheduler:
             return f"{minutes:02d}:{seconds:02d}"
 
     def get_next_sync_time_str(self) -> str:
-        """取得下次預計同步的具體時間字串"""
-        if not self._running or self._paused or self._next_sync_time is None:
+        """取得下次預計同步的具體時間字串 (根據目前系統時間與剩餘秒數推算)"""
+        if not self._running or self._paused or self._next_sync_mono is None:
             return "無排程"
-        return self._next_sync_time.strftime("%Y-%m-%d %H:%M:%S")
+        rem = self.get_remaining_seconds()
+        expected_dt = datetime.now() + timedelta(seconds=rem)
+        return expected_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def _get_target_servers(self) -> Union[str, List[str]]:
         """取得要查詢的目標伺服器"""
@@ -239,15 +235,15 @@ class TimeSyncScheduler:
                 print(f"on_sync_finish 回呼發生例外: {e}")
 
     def _run_loop(self):
-        """背景線程主要迴圈"""
+        """背景線程主要迴圈 (基於 time.monotonic)"""
         while not self._stop_event.is_set():
-            if not self._paused and self._next_sync_time is not None:
-                now = datetime.now()
-                if now >= self._next_sync_time:
+            if not self._paused and self._next_sync_mono is not None:
+                now_mono = time.monotonic()
+                if now_mono >= self._next_sync_mono:
                     self._perform_sync()
                     with self._lock:
-                        self._next_sync_time = datetime.now() + timedelta(
-                            seconds=self.interval_seconds
+                        self._next_sync_mono = (
+                            time.monotonic() + self.interval_seconds
                         )
 
             # 每秒觸發 on_tick 回呼通知外部更新倒數計時

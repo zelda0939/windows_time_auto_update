@@ -115,14 +115,14 @@ class TestThresholdSync(unittest.TestCase):
     """智慧誤差閾值校時測試"""
 
     def test_threshold_sync_skipped_when_accurate(self):
-        """測試當系統時鐘偏差小於 60 秒時，應跳過寫入 (skipped=True)"""
+        """測試當系統時鐘偏差小於設定閾值時，應跳過寫入 (skipped=True)"""
         syncer = TimeSyncer()
-        # 設定閾值為 60 秒 (目前電腦時鐘與 Google NTP 誤差通常只有幾毫秒到幾秒，遠小於 60 秒)
-        res = syncer.sync_time("time.google.com", threshold_seconds=60.0)
+        # 設定極大閾值 (100000 秒)，確保大於當前任何偏差值以驗證略過邏輯
+        res = syncer.sync_time("time.google.com", threshold_seconds=100000.0)
         self.assertTrue(res["success"])
         self.assertTrue(res["skipped"])
         self.assertIn("小於設定閾值", res["message"])
-        self.assertEqual(res["threshold_sec"], 60.0)
+        self.assertEqual(res["threshold_sec"], 100000.0)
 
     def test_threshold_sync_not_skipped_when_exceeded(self):
         """測試當閾值為 0.0000001 秒 (極小) 時，應判定為超過閾值 (skipped=False)"""
@@ -131,6 +131,19 @@ class TestThresholdSync(unittest.TestCase):
         self.assertIn("success", res)
         # 不論是否因為非管理員報錯，skipped 必須為 False
         self.assertFalse(res.get("skipped", True))
+
+    def test_scheduler_monotonic_countdown(self):
+        """測試排程器倒數計時使用單調時鐘，保證倒數秒數精準且不受 Wall-Clock 影響"""
+        syncer = TimeSyncer()
+        s = TimeSyncScheduler(syncer, interval_value=60, interval_unit="seconds")
+        s.start()
+        rem1 = s.get_remaining_seconds()
+        self.assertGreater(rem1, 58.0)
+        self.assertLessEqual(rem1, 60.0)
+        time.sleep(0.5)
+        rem2 = s.get_remaining_seconds()
+        self.assertLess(rem2, rem1)
+        s.stop()
 
 
 class TestSystemTimeAndAutostart(unittest.TestCase):
