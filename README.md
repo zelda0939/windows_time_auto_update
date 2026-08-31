@@ -89,10 +89,11 @@ build_exe.bat
 | `time_syncer.py` | Windows API `SetSystemTime` 系統時鐘寫入與 UAC 權限管理 |
 | `scheduler.py` | 非同步背景定時排程器與倒數計時器 |
 | `config_manager.py` | `config.json` 設定檔讀寫與自訂伺服器管理 |
-| `autostart.py` | Windows 開機自動啟動登錄檔管理 |
+| `autostart.py` | Windows 開機自動啟動 (工作排程器免 UAC / 登錄檔備援) 管理 |
+| `setup_autostart.bat` | 一鍵註冊/修復最高管理員權限開機工作排程腳本 (免 UAC 靜默常駐) |
 | `tray_icon.py` | 系統匣圖示 (pystray) 與右鍵選單 |
 | `run.bat` / `run_admin.bat` | 一鍵啟動批次檔 |
-| `build.py` / `build_exe.bat` | PyInstaller 單檔編譯打包 Python 核心與批次腳本 |
+| `build.py` / `build_exe.bat` | 原生 C# EXE 編譯與打包腳本 |
 | `requirements.txt` | Python 依賴套件清單 |
 
 ---
@@ -100,10 +101,13 @@ build_exe.bat
 ## ❓ 常見問題 (FAQ)
 
 ### Q1: 為什麼校時會顯示「權限不足」？
-> **A:** Windows 作業系統的安全規範限制只有具備「系統管理員 (Administrator)」權限的程序才能修改系統時鐘。請以系統管理員身分執行 `run_admin.bat`，或在介面頂端點擊黃色的「⚠️ 點擊以管理員權限重啟」按鈕即可。
+> **A:** Windows 作業系統的安全規範限制只有具備「系統管理員 (Administrator)」權限的程序才能修改系統時鐘。請直接雙擊 `WindowsTimeAutoUpdate.exe`（會自動要求管理員權限），或執行 `run_admin.bat`，亦可在介面頂端點擊黃色的「⚠️ 點擊以管理員權限重啟」按鈕。
 
 ### Q2: 關閉視窗後程式還在執行嗎？
 > **A:** 預設有勾選「點擊關閉視窗 (X) 時縮小至系統匣」，因此點擊右上角 X 關閉視窗後，程式會常駐在螢幕右下角系統匣，並依照您設定的頻率繼續在背景自動校時。如欲完全結束程式，可於系統匣圖示點擊右鍵選擇「結束程式」。
 
 ### Q3: 如何設定電腦開機後自動在背景校時？
-> **A:** 只要在主畫面中勾選 **「開機自動啟動 (常駐於系統匣)」**，程式會自動寫入 Windows 登錄檔，電腦每次開機時就會自動於背景啟動並常駐於系統匣，完全無需手動開啟。
+> **A:** 
+> - **最推薦方式**：直接在主畫面中勾選 **「開機自動啟動 (常駐於系統匣)」**，或雙擊專案目錄下的 **`setup_autostart.bat`**。
+> - 程式會自動透過 **Windows 工作排程器** 註冊開機啟動工作（設定以最高管理員權限靜默啟動，開機登入後**完全免除 UAC 彈窗**，並自動等待 Google Drive 與網路掛載就緒）。
+

@@ -14,7 +14,11 @@ from tkinter import messagebox, ttk
 from typing import Callable, Dict, List, Optional
 
 from PIL import ImageTk
-from autostart import is_autostart_enabled, set_autostart
+from autostart import (
+    check_autostart_status,
+    is_autostart_enabled,
+    set_autostart,
+)
 from config_manager import ConfigManager
 from ntp_client import NTPClient
 from scheduler import TimeSyncScheduler
@@ -1120,15 +1124,21 @@ class ModernTimeSyncGUI:
         if success:
             self.config_mgr.set("auto_start", enable)
             if enable:
+                status = check_autostart_status()
+                mode_desc = (
+                    "已註冊 Windows 工作排程器 (以最高管理員權限靜默啟動，開機免 UAC 彈窗)"
+                    if status.get("task_scheduler_enabled")
+                    else "已寫入 Windows 登錄檔 (HKCU Run)"
+                )
                 self.log(
-                    "已啟用開機自動啟動 (已寫入 Windows 登錄檔，開機將自動常駐於系統匣)",
+                    f"已啟用開機自動啟動 ({mode_desc})",
                     level="success",
                 )
             else:
-                self.log("已停用開機自動啟動 (已移除登錄檔項目)", level="info")
+                self.log("已停用開機自動啟動 (已清除工作排程與登錄檔項目)", level="info")
         else:
             self.var_auto_start.set(not enable)
-            messagebox.showerror("錯誤", "設定開機啟動失敗，請檢查權限。")
+            messagebox.showerror("錯誤", "設定開機啟動失敗，請檢查系統權限。")
 
     def _elevate_and_restart(self):
         """以系統管理員權限重啟程式"""

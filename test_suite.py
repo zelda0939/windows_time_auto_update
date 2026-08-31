@@ -150,9 +150,14 @@ class TestSystemTimeAndAutostart(unittest.TestCase):
     """系統時間與開機啟動模組測試"""
 
     def test_autostart_command_generation(self):
+        from autostart import check_autostart_status, get_launch_command
         cmd = get_launch_command(start_minimized=True)
-        self.assertIn("main.py", cmd)
+        self.assertTrue("WindowsTimeAutoUpdate.exe" in cmd or "main.py" in cmd)
         self.assertIn("--minimized", cmd)
+
+        status = check_autostart_status()
+        self.assertIn("enabled", status)
+        self.assertIn("target_executable", status)
 
     def test_tray_icon_image(self):
         img = create_default_icon_image(64, 64)
@@ -162,3 +167,4 @@ class TestSystemTimeAndAutostart(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

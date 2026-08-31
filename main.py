@@ -138,8 +138,8 @@ def main():
         request_admin_elevation(clean_args)
         sys.exit(0)
 
-    # 3. 若為打包後的 EXE 或直接啟動且非管理員，自動嘗試進行 UAC 提權啟動
-    if not is_admin() and not args.restarting and not args.no_auto_elevate:
+    # 3. 若為打包後的 EXE 或直接啟動且非管理員，自動嘗試進行 UAC 提權啟動 (開機最小化模式除外)
+    if not is_admin() and not args.restarting and not args.no_auto_elevate and not args.minimized:
         forward_args = [a for a in sys.argv[1:]] + ["--restarting"]
         elevated = request_admin_elevation(forward_args)
         if elevated:

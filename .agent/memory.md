@@ -11,11 +11,15 @@
   - **單調時鐘排程架構 (Monotonic Scheduler)**：排程器與倒數計時全面採用 `time.monotonic()` 物理單調計時，完全免疫系統時鐘竄改、手動調整或校時跳躍的影響，確保「每 1 分鐘」就是精準的 60 秒物理時間。
   - **智慧誤差閾值模式 (Threshold-based Sync)**：支援設定誤差閾值（預設 60 秒 / 1 分鐘），僅在系統時間與 NTP 伺服器時間誤差超過此閾值時才進行寫入更新；若誤差小於閾值則略過寫入，減少時鐘跳動。
 - **原生 EXE 啟動器架構**：
-  - 由於 Python 3.14 (rc3) 尚未被 PyInstaller bootloader 完全相容（會產生 embedded PKG archive 讀取錯誤），我們直接使用 Windows 系統內建的 .NET 編譯器 (`csc.exe`)，將 `launcher.cs` 編譯成標準原生 Windows PE 執行檔 `WindowsTimeAutoUpdate.exe`。
-  - **特色**：內建應用程式專屬圖示 `app_icon.ico`、自動調用 `pythonw.exe` 靜默執行、自動要求 UAC 管理員權限、零依賴、體積僅 7KB，雙擊秒開無黑框。
+  - 由於 Python 3.14 (rc3) 尚未被 PyInstaller bootloader 完全相容，直接使用 Windows 系統內建的 .NET 編譯器 (`csc.exe`)，將 `launcher.cs` 編譯成標準原生 Windows PE 執行檔 `WindowsTimeAutoUpdate.exe`。
+  - **特色**：內建專屬圖示 `app_icon.ico`、自動調用 `pythonw.exe` 靜默執行、自動要求 UAC 管理員權限、零依賴、體積僅 16KB，雙擊秒開無黑框。
+  - **開機背景啟動策略**：在 `--minimized` 模式下不主動強制彈 UAC，避免被 Windows 開機機制靜默阻擋，確保順利進入常駐。
+  - **Google Drive 掛載等待容錯 (Drive-Ready Waiter)**：針對專案放置於 Google 雲端硬碟 (`G:\`) 等虛擬磁碟機，啟動器在開機 `--minimized` 模式下內建 60 秒重試循環，自動等待磁碟掛載就緒。
   - 支援 `create_desktop_shortcut.bat` 一鍵建立桌面快捷方式圖示。
-- **系統托盤**：使用 `pystray` + `Pillow` 實作最小化至右下角系統匣常駐運行，避免干擾日常工作，提供右鍵快捷選單與 Windows 桌面通知。
-- **開機自動啟動**：透過 Windows 註冊表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 管理開機自動以 `--minimized` 靜默常駐至系統匣。
+- **開機自動啟動架構 (LocalAppData 本機部署 + 工作排程器免 UAC 雙軌制)**：
+  - **本機 LocalAppData 永久部署**：啟用開機啟動時，自動將程式核心檔案同步安裝至 `%LOCALAPPDATA%\WindowsTimeAutoUpdate\` (C 槽純 ASCII 路徑)。開機瞬間 100% 存在、秒載入，徹底解決 Google Drive (G:) 開機尚未掛載以及中文路徑編碼損壞的根本問題。
+  - **Windows 工作排程器 (首選模式)**：使用 `schtasks` 註冊 `WindowsTimeAutoUpdate_Startup`，設定登入觸發 (`/sc ONLOGON`) 與最高管理員權限 (`/rl HIGHEST`)，開機免 UAC 靜默常駐。
+  - **純 ASCII 批次檔**：`setup_autostart.bat` 採 100% 純 ASCII 指令，杜絕 Windows cmd.exe 多位元組中文字元斷詞亂碼截斷報錯。
 - **單一執行個體限制**：使用 Windows Named Mutex (`CreateMutexW`) 確保背景不會多開衝突。
 - **設定持久化**：`config.json` 記錄更新頻率、NTP 伺服器清單、自訂伺服器、開機自動啟動狀態等。
 
@@ -26,8 +30,9 @@
 - `time_syncer.py`: Win32 API 系統時鐘寫入與 UAC 提權
 - `scheduler.py`: 背景排程器與倒數計時
 - `config_manager.py`: 設定檔讀寫
-- `autostart.py`: Windows 註冊表開機啟動
+- `autostart.py`: LocalAppData 本機部署與工作排程器/登錄檔雙軌開機自啟動管理
+- `setup_autostart.bat`: 100% 純 ASCII 一鍵部署與註冊開機工作排程腳本
 - `tray_icon.py`: 系統匣圖示與右鍵選單
-- `run.bat` / `run_admin.bat`: 一鍵啟動腳本 (純 ASCII 防止 cmd 編碼錯亂)
-- `build.py` / `build_exe.bat`: PyInstaller 打包獨立 EXE 腳本 (Python 驅動避免 Windows cmd UTF-8 亂碼截斷)
+- `run.bat` / `run_admin.bat`: 一鍵啟動腳本
+- `build_exe.bat` / `launcher.cs`: 原生 C# EXE 啟動器編譯與原始碼
 - `test_suite.py`: 單元與功能測試套件

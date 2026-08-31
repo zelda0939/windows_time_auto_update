@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Principal;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace WindowsTimeAutoUpdate
@@ -10,37 +12,71 @@ namespace WindowsTimeAutoUpdate
         [STAThread]
         static void Main(string[] args)
         {
+            bool isMinimized = false;
+            if (args != null)
+            {
+                foreach (string a in args)
+                {
+                    if (string.Equals(a, "--minimized", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isMinimized = true;
+                        break;
+                    }
+                }
+            }
+
             try
             {
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 string mainPy = Path.Combine(baseDir, "main.py");
 
-                if (!File.Exists(mainPy))
+                // 若在雲端硬碟 (Google Drive 等) 開機載入階段，磁碟機可能需要數秒至數十秒掛載
+                // 當 main.py 暫不可用時，進行最多 60 秒的重試等待循環
+                int waitSeconds = 0;
+                int maxWait = isMinimized ? 60 : 3;
+
+                while (!File.Exists(mainPy) && waitSeconds < maxWait)
                 {
-                    // 若不在同一目錄，嘗試在當前目錄查找
-                    mainPy = Path.Combine(Environment.CurrentDirectory, "main.py");
+                    Thread.Sleep(1000);
+                    waitSeconds++;
+
+                    if (!File.Exists(mainPy))
+                    {
+                        mainPy = Path.Combine(Environment.CurrentDirectory, "main.py");
+                    }
                 }
 
                 if (!File.Exists(mainPy))
                 {
-                    MessageBox.Show(
-                        "找不到主程式 main.py！\n請確保 WindowsTimeAutoUpdate.exe 與 main.py 位於相同目錄下。",
-                        "Windows 網路自動校時工具",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
+                    string err = "找不到主程式 main.py！\n請確保 WindowsTimeAutoUpdate.exe 與 main.py 位於相同目錄下。\n" +
+                                 "搜尋路徑：" + baseDir;
+                    LogError(err);
+                    if (!isMinimized)
+                    {
+                        MessageBox.Show(
+                            err,
+                            "Windows 網路自動校時工具",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error
+                        );
+                    }
                     return;
                 }
 
                 string pythonw = FindPythonw();
                 if (string.IsNullOrEmpty(pythonw))
                 {
-                    MessageBox.Show(
-                        "找不到 Python 執行環境 (pythonw.exe)！\n請確認已安裝 Python 並且加入了系統 PATH。",
-                        "Windows 網路自動校時工具",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
+                    string err = "找不到 Python 執行環境 (pythonw.exe)！\n請確認已安裝 Python 並且加入了系統 PATH。";
+                    LogError(err);
+                    if (!isMinimized)
+                    {
+                        MessageBox.Show(
+                            err,
+                            "Windows 網路自動校時工具",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error
+                        );
+                    }
                     return;
                 }
 
@@ -50,13 +86,16 @@ namespace WindowsTimeAutoUpdate
                     arguments += " " + string.Join(" ", args);
                 }
 
+                bool alreadyAdmin = IsRunningAsAdmin();
+
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = pythonw,
                     Arguments = arguments,
                     WorkingDirectory = Path.GetDirectoryName(mainPy),
                     UseShellExecute = true,
-                    Verb = "runas", // 以系統管理員權限啟動
+                    // 若已是管理員，或開機背景啟動模式 (--minimized)，不強制彈 UAC 視窗以防 Windows 阻擋
+                    Verb = (alreadyAdmin || isMinimized) ? "" : "runas",
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
 
@@ -67,13 +106,52 @@ namespace WindowsTimeAutoUpdate
                 // 使用者在 UAC 提示時選擇「取消/否」
                 if (ex.NativeErrorCode != 1223) // 1223 = ERROR_CANCELLED
                 {
-                    MessageBox.Show("啟動失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    LogError("啟動失敗 (Win32Exception): " + ex.Message);
+                    if (!isMinimized)
+                    {
+                        MessageBox.Show("啟動失敗: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("發生未預期的錯誤: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                LogError("發生未預期的錯誤: " + ex.Message + "\n" + ex.StackTrace);
+                if (!isMinimized)
+                {
+                    MessageBox.Show("發生未預期的錯誤: " + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
+        }
+
+        static bool IsRunningAsAdmin()
+        {
+            try
+            {
+                WindowsIdentity identity = WindowsIdentity.GetCurrent();
+                WindowsPrincipal principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static void LogError(string message)
+        {
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string logDir = Path.Combine(localAppData, "WindowsTimeAutoUpdate");
+                if (!Directory.Exists(logDir))
+                {
+                    Directory.CreateDirectory(logDir);
+                }
+                string logFile = Path.Combine(logDir, "launcher_error.log");
+                string logText = string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}\r\n", DateTime.Now, message);
+                File.AppendAllText(logFile, logText);
+            }
+            catch { }
         }
 
         static string FindPythonw()
@@ -96,11 +174,11 @@ namespace WindowsTimeAutoUpdate
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string[] commonLocations = new string[]
             {
+                Path.Combine(localAppData, @"Python\pythoncore-3.14-64\pythonw.exe"),
                 Path.Combine(localAppData, @"Programs\Python\Python314\pythonw.exe"),
                 Path.Combine(localAppData, @"Programs\Python\Python313\pythonw.exe"),
                 Path.Combine(localAppData, @"Programs\Python\Python312\pythonw.exe"),
                 Path.Combine(localAppData, @"Programs\Python\Python311\pythonw.exe"),
-                Path.Combine(localAppData, @"Python\pythoncore-3.14-64\pythonw.exe"),
                 @"C:\Python314\pythonw.exe",
                 @"C:\Python313\pythonw.exe",
                 @"C:\Python312\pythonw.exe",
