@@ -1,0 +1,109 @@
+114.08.29
+1. 包安設備紀錄 設備記錄清單優化 紀錄清單API增加相片數量資訊 程式撰寫
+2. 包安設備紀錄 設備記錄清單優化 JS邏輯修改 程式撰寫
+3. 包安設備紀錄 設備記錄清單優化 測試&除錯
+ 
+114.08.28
+1. SunVeillance 政大數位看板 API增加反向代理 測試&除錯
+2. SunVeillance 政大數位看板 前端介面修改 程式修改
+3. SunVeillance 政大數位看板 前端介面修改 測試&除錯
+ 
+ 
+114.08.27
+1. SunVeillance 政大數位看板 增加快取處理 workflow調整 程式撰寫
+2. SunVeillance 政大數位看板 增加快取處理 測試&除錯
+3. SunVeillance 政大數位看板 API增加反向代理 nginx config修改
+ 
+114.08.26
+1. SunVeillance 政大數位看板 增加預備資料 資料擷取節點 程式修改
+2. SunVeillance 政大數位看板 增加快取處理 workflow調整 節點設定
+3. 包安設備紀錄 設備編輯API 調降修改權限 程式修改
+
+114.08.25
+1. 例行資料備份檢查
+2. SunVeillance 政大數位看板 美編切版導入 圖片處理
+3. SunVeillance 政大數位看板 美編切版導入 API串接
+4. SunVeillance 政大數位看板 美編切版導入 測試&除錯
+
+114.08.22
+1. SunVeillance 政大數位看板 後端增加紀錄儲存 測試&除錯
+2. SunVeillance 政大數位看板 前端重構 將資料處理邏輯提取至獨立函數 改善錯誤處理 優化從 API 和本地檔案讀取資料的流程
+3. SunVeillance 政大數位看板 前端重構 測試&除錯
+
+114.08.21
+1. SunVeillance 政大數位看板 後端錯誤處理 測試&除錯
+2. SunVeillance 政大數位看板 後端增加紀錄儲存 mysql節點設定&程式撰寫
+3. SunVeillance 政大數位看板 後端增加紀錄儲存 txt檔輸出 code及ftp節點設定&程式撰寫
+
+114.08.20
+1. SunVeillance 政大數位看板 測試頁面 測試&除錯
+2. SunVeillance 政大數位看板 前端與美編溝通協調
+3. SunVeillance 政大數位看板 後端錯誤處理 workflow調整&程式撰寫
+ 
+114.08.19
+1. SunVeillance 政大數位看板 n8n workflow參數節點增加參數 測試&除錯
+2. SunVeillance 政大數位看板 測試頁面 測試程式修改
+3. 花蓮遠百容留 遠端協助新增感測器 
+ 
+114.08.18
+1. 例行資料備份檢查
+2. SunVeillance 政大數位看板 到學校開會
+3. SunVeillance 政大數位看板 會議記錄撰寫
+4. SunVeillance 政大數位看板 n8n workflow參數節點增加參數 程式撰寫
+
+114.08.15
+1. 包安設備紀錄 新增設備流程優化 API串接 程式撰寫
+2. 包安設備紀錄 新增設備流程優化 測試&除錯
+3. 包安設備紀錄 新增設備流程優化 API程式重構&優化
+ 
+114.08.14
+1. 包安定保 叫修記錄到店人選項修正 程式修改
+2. 包安定保 叫修記錄到店人選項修正 測試&除錯
+3. 包安定保 協助處理紀錄新增失敗之問題
+ 
+114.08.13
+1. 包安設備紀錄 新增設備流程優化 介面切版 程式撰寫
+2. 包安設備紀錄 新增設備流程優化 相關JS函式導入 程式撰寫
+3. 包安設備紀錄 新增設備流程優化 submit API 程式修改
+ 
+114.08.12
+1. SunVeillance 政大數位看板 API workflow導入mysql cookies資料 程式撰寫
+2. SunVeillance 政大數位看板 API workflow導入mysql cookies資料 測試&除錯
+3. SunVeillance 政大數位看板 API workflow導入mysql cookies資料 流程優化 
+ 
+114.08.11
+1. 公司早會
+2. 例行資料備份檢查
+3. SunVeillance 政大數位看板 cookies資料儲存 排程設定
+4. SunVeillance 政大數位看板 cookies資料儲存 測試&除錯
+ 
+114.08.08
+1. SunVeillance 政大數位看板 code節點儲存資料 測試&除錯
+2. SunVeillance 政大數位看板 n8n參數資料庫建立
+3. SunVeillance 政大數位看板 cookies資料儲存 mysql節點設定
+ 
+114.08.07
+1. SunVeillance 政大數位看板 專案討論
+2. SunVeillance 政大數位看板 研究n8n儲存cookie之方式
+3. SunVeillance 政大數位看板 code節點儲存資料 程式撰寫
+ 
+114.08.06
+1. 研究學習 Tesseract 增加圖像預處理 API程式修改
+2. 研究學習 Tesseract 增加圖像預處理 docker-compose程式修改
+3. 研究學習 Tesseract 增加圖像預處理 測試&除錯
+ 
+114.08.05
+1. 研究學習 Tesseract api 程式撰寫
+2. 研究學習 Tesseract docker 測試&除錯
+3. 研究學習 Tesseract 增加圖像預處理 dockerfile 程式修改
+ 
+114.08.04
+1. 公司早會
+2. 例行資料備份檢查
+3. 研究學習 Tesseract docker compose 程式撰寫
+4. 研究學習 Tesseract dockerfile 程式撰寫
+ 
+114.08.01
+1. 研究學習 n8n 版本更新
+2. 研究學習 Tesseract 研究相關資料
+3. 研究學習 Tesseract 測試環境建立
