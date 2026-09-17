@@ -41,16 +41,27 @@
 
 ## 🚀 快速開始
 
-### 方式 1：直接執行 WindowsTimeAutoUpdate.exe（最推薦）
-雙擊專案目錄下的：
-```bash
-WindowsTimeAutoUpdate.exe
-```
-*(💡 雙擊 `create_desktop_shortcut.bat`，可一鍵在桌面建立專屬時鐘圖示的快捷方式！)*
+### 方式 1：直接執行 WindowsTimeAutoUpdate.exe（最推薦，免安裝 Python）
+本工具內建獨立精簡 Python 執行時環境（`runtime/` 目錄），**目標電腦完全無需安裝 Python**：
+1. 雙擊專案目錄下的：
+   ```bash
+   WindowsTimeAutoUpdate.exe
+   ```
+2. *(💡 雙擊 `create_desktop_shortcut.bat`，可一鍵在桌面建立專屬時鐘圖示的快捷方式！)*
+3. **若需發行給其他未安裝 Python 的電腦**：直接複製整個目錄，或使用已封裝好的 **`WindowsTimeAutoUpdate_Portable.zip`**（僅約 21MB），解壓即可秒開秒用！
 
 ---
 
-### 方式 2：使用腳本啟動
+### 方式 2：一鍵重新建置免安裝綠色發行包
+若您後續有修改程式碼或欲重新產出綠色便攜壓縮檔，只需雙擊：
+```bash
+build_portable_zip.bat
+```
+腳本將自動重新編譯啟動器、驗證獨立 Runtime 並打包產出 `WindowsTimeAutoUpdate_Portable.zip`。
+
+---
+
+### 方式 3：使用腳本啟動（開發偵錯用）
 雙擊執行專案目錄下的：
 ```bash
 run_admin.bat
@@ -94,6 +105,10 @@ build_exe.bat
 | `tray_icon.py` | 系統匣圖示 (pystray) 與右鍵選單 |
 | `run.bat` / `run_admin.bat` | 一鍵啟動批次檔 |
 | `build.py` / `build_exe.bat` | 原生 C# EXE 編譯與打包腳本 |
+| `create_portable_package.py` | 提取精簡 Python Runtime 並打包綠色便攜 ZIP 腳本 |
+| `build_portable_zip.bat` | 一鍵編譯啟動器並封裝可發行 ZIP 的批次檔 |
+| `runtime/` | 專屬獨立免安裝 Python 執行時環境目錄 (免安裝 Python 關鍵) |
+| `WindowsTimeAutoUpdate_Portable.zip` | 獨立免安裝綠色便攜壓縮發行包 (約 21MB) |
 | `requirements.txt` | Python 依賴套件清單 |
 
 ---

@@ -62,6 +62,22 @@ def deploy_to_local_appdata() -> Tuple[bool, str]:
                 except Exception as e:
                     print(f"複製 {fname} 警告: {e}")
 
+        # 若專案內建免安裝便攜 runtime/ 目錄，亦同步部署至 LocalAppData 以供未安裝 Python 之電腦開機自啟動
+        src_runtime = os.path.join(source_dir, "runtime")
+        dst_runtime = os.path.join(dest_dir, "runtime")
+        if os.path.exists(src_runtime):
+            # 若目的地尚未有完整的 runtime/pythonw.exe，進行複製
+            if not os.path.exists(os.path.join(dst_runtime, "pythonw.exe")):
+                try:
+                    shutil.copytree(
+                        src_runtime,
+                        dst_runtime,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                        dirs_exist_ok=True,
+                    )
+                except Exception as e:
+                    print(f"同步 runtime 警告: {e}")
+
         return True, dest_dir
     except Exception as e:
         print(f"部署至 LocalAppData 失敗: {e}")

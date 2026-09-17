@@ -20,19 +20,28 @@
   - **本機 LocalAppData 永久部署**：啟用開機啟動時，自動將程式核心檔案同步安裝至 `%LOCALAPPDATA%\WindowsTimeAutoUpdate\` (C 槽純 ASCII 路徑)。開機瞬間 100% 存在、秒載入，徹底解決 Google Drive (G:) 開機尚未掛載以及中文路徑編碼損壞的根本問題。
   - **Windows 工作排程器 (首選模式)**：使用 `schtasks` 註冊 `WindowsTimeAutoUpdate_Startup`，設定登入觸發 (`/sc ONLOGON`) 與最高管理員權限 (`/rl HIGHEST`)，開機免 UAC 靜默常駐。
   - **純 ASCII 批次檔**：`setup_autostart.bat` 採 100% 純 ASCII 指令，杜絕 Windows cmd.exe 多位元組中文字元斷詞亂碼截斷報錯。
+- **免安裝綠色便攜架構 (零依賴 Portable Runtime)**：
+  - **精簡 Runtime 目錄 (`runtime/`)**：從官方環境提取核心直譯器、標準庫、Tkinter (tcl/tk)、Pillow 與 pystray (含 six.py)，體積僅約 60MB (壓縮後僅 21MB)，完全免除目標電腦安裝 Python 之需求。
+  - **原生 C# 啟動器升級 (`launcher.cs` -> `WindowsTimeAutoUpdate.exe`)**：`FindPythonw()` 優先尋找程式所在目錄之 `runtime\pythonw.exe`，免裝 Python 亦可毫秒級雙擊秒開，且完全免疫防毒軟體加殼誤判。
+  - **LocalAppData 開機自啟動同步支援**：`autostart.py` 於部署至 `%LOCALAPPDATA%\WindowsTimeAutoUpdate\` 時，自動偵測並同步部署 `runtime/`，確保無 Python 電腦於開機自動啟動時依然順暢常駐。
+  - **一鍵建置發行腳本**：`create_portable_package.py` 與 `build_portable_zip.bat`，可自動自我驗證依賴並輸出 `WindowsTimeAutoUpdate_Portable.zip`。
+- **版本控制規範 (`.gitignore`)**：建立標準 `.gitignore` 排除 `runtime/`、`*.zip`、`build/`、`dist/` 與 `__pycache__/`，確保二進位執行時與發行壓縮包不污染 Git 倉庫，維持倉庫極簡與高效同步。
 - **單一執行個體限制**：使用 Windows Named Mutex (`CreateMutexW`) 確保背景不會多開衝突。
 - **設定持久化**：`config.json` 記錄更新頻率、NTP 伺服器清單、自訂伺服器、開機自動啟動狀態等。
 
 ## 模組檔案清單
+- `.gitignore`: Git 忽略清單 (排除 runtime、zip、快取與建置暫存)
 - `main.py`: 主程式進入點、命令列參數解析、Mutex 檢查
 - `gui.py`: 現代科技深色卡片式儀表板介面
 - `ntp_client.py`: NTP/SNTP 通訊協定與延遲計算
 - `time_syncer.py`: Win32 API 系統時鐘寫入與 UAC 提權
 - `scheduler.py`: 背景排程器與倒數計時
 - `config_manager.py`: 設定檔讀寫
-- `autostart.py`: LocalAppData 本機部署與工作排程器/登錄檔雙軌開機自啟動管理
+- `autostart.py`: LocalAppData 本機部署與工作排程器/登錄檔雙軌開機自啟動管理 (含 runtime 同步)
 - `setup_autostart.bat`: 100% 純 ASCII 一鍵部署與註冊開機工作排程腳本
 - `tray_icon.py`: 系統匣圖示與右鍵選單
-- `run.bat` / `run_admin.bat`: 一鍵啟動腳本
-- `build_exe.bat` / `launcher.cs`: 原生 C# EXE 啟動器編譯與原始碼
+- `runtime/`: 獨立免安裝精簡 Python 3.14 執行時環境 (零相依發行關鍵)
+- `WindowsTimeAutoUpdate_Portable.zip`: 完整免安裝綠色便攜發行包 (約 21MB)
+- `create_portable_package.py` / `build_portable_zip.bat`: 免安裝便攜包建置與自動驗證腳本
+- `build_exe.bat` / `launcher.cs`: 原生 C# EXE 啟動器編譯與原始碼 (優先調用 runtime)
 - `test_suite.py`: 單元與功能測試套件

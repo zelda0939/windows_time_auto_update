@@ -1,0 +1,27 @@
+# Python 編譯快取與字節碼
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 免安裝獨立 Runtime 與發行打包壓縮檔 (由建置腳本產出)
+runtime/
+*.zip
+
+# PyInstaller / 臨時編譯輸出目錄
+build/
+dist/
+*.spec
+
+# 編輯器與 IDE 設定檔
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 作業系統暫存檔
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# 執行階段日誌
+*.log

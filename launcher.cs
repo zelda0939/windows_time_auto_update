@@ -63,10 +63,10 @@ namespace WindowsTimeAutoUpdate
                     return;
                 }
 
-                string pythonw = FindPythonw();
+                string pythonw = FindPythonw(baseDir);
                 if (string.IsNullOrEmpty(pythonw))
                 {
-                    string err = "找不到 Python 執行環境 (pythonw.exe)！\n請確認已安裝 Python 並且加入了系統 PATH。";
+                    string err = "找不到 Python 執行環境 (pythonw.exe)！\n請確認已安裝 Python 或於程式目錄內建 runtime/ 資料夾。";
                     LogError(err);
                     if (!isMinimized)
                     {
@@ -154,8 +154,18 @@ namespace WindowsTimeAutoUpdate
             catch { }
         }
 
-        static string FindPythonw()
+        static string FindPythonw(string baseDir)
         {
+            // 0. 第一優先：檢查本程式同目錄下之免安裝便攜 Runtime (runtime\\pythonw.exe 或 python\\pythonw.exe)
+            if (!string.IsNullOrEmpty(baseDir))
+            {
+                string localRuntime = Path.Combine(baseDir, "runtime", "pythonw.exe");
+                if (File.Exists(localRuntime)) return localRuntime;
+
+                string localPythonDir = Path.Combine(baseDir, "python", "pythonw.exe");
+                if (File.Exists(localPythonDir)) return localPythonDir;
+            }
+
             // 1. 檢查 PATH
             string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
             string[] paths = pathEnv.Split(';');
