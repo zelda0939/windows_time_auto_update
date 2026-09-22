@@ -44,6 +44,62 @@ class TestNTPClient(unittest.TestCase):
         self.assertEqual(res["server"], "time.google.com")
 
 
+class TestHTTPTimeClient(unittest.TestCase):
+    """HTTPS (TCP 443) 備援時間客戶端測試"""
+
+    def test_query_google_https(self):
+        from http_time_client import HTTPTimeClient
+
+        client = HTTPTimeClient(timeout=4.0)
+        res = client.query("www.google.com")
+        self.assertTrue(res["success"], f"HTTPS 查詢失敗: {res.get('error')}")
+        self.assertEqual(res["protocol"], "HTTPS")
+        self.assertIsNotNone(res["delay_ms"])
+        self.assertIsNotNone(res["offset_ms"])
+        self.assertIsInstance(res["corrected_utc_dt"], datetime)
+        self.assertGreater(res["delay_ms"], 0)
+
+    def test_fallback_query_https(self):
+        from http_time_client import HTTPTimeClient
+
+        client = HTTPTimeClient(timeout=2.0)
+        servers = ["invalid.nonexistent.domain.xyz", "www.google.com"]
+        res = client.query_with_fallback(servers)
+        self.assertTrue(res["success"])
+        self.assertEqual(res["protocol"], "HTTPS")
+        self.assertEqual(res["server"], "www.google.com")
+
+
+class TestDualProtocolFallback(unittest.TestCase):
+    """NTP 與 HTTPS 雙軌自動降級備援測試"""
+
+    def test_auto_fallback_to_https_when_ntp_fails(self):
+        """當 NTP 伺服器不可達 (模擬 UDP 123 被擋) 時，自動降級切換至 HTTPS 備援"""
+        syncer = TimeSyncer(timeout=2.0)
+        # 給定一個保證無法連線的 NTP 伺服器
+        res = syncer.sync_time(
+            "192.0.2.1",  # RFC 5737 TEST-NET-1 (不可達)
+            threshold_seconds=100000.0,  # 設大閾值以驗證略過寫入前之時間取得
+            enable_http_fallback=True,
+            http_servers=["www.google.com"],
+        )
+        self.assertTrue(res["success"], f"備援同步失敗: {res.get('error')}")
+        self.assertEqual(res["protocol"], "HTTPS")
+        self.assertTrue(res["is_fallback"])
+        self.assertIn("HTTPS", res["message"])
+
+    def test_no_fallback_when_disabled(self):
+        """當停用 HTTPS 備援時，NTP 失敗應直接回傳失敗"""
+        syncer = TimeSyncer(timeout=1.0)
+        res = syncer.sync_time(
+            "192.0.2.1",
+            enable_http_fallback=False,
+        )
+        self.assertFalse(res["success"])
+        self.assertEqual(res["protocol"], "NTP")
+        self.assertFalse(res["is_fallback"])
+
+
 class TestConfigManager(unittest.TestCase):
     """設定檔管理器測試"""
 

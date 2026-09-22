@@ -24,6 +24,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "sync_on_startup": True,
     "threshold_sync_enabled": False,
     "threshold_seconds": 60,
+    "enable_http_fallback": True,
+    "http_fallback_servers": [
+        "www.google.com",
+        "www.cloudflare.com",
+        "www.microsoft.com",
+        "www.apple.com",
+    ],
 }
 
 

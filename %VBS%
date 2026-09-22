@@ -1,0 +1,9 @@
+Set oWS = WScript.CreateObject("WScript.Shell")  
+sLinkFile = oWS.SpecialFolders("Desktop") & "\Windows 網路自動校時工具.lnk"  
+Set oLink = oWS.CreateShortcut(sLinkFile)  
+oLink.TargetPath = "G:\我的雲端硬碟\安成工作資料\同步區\case\windows_time_auto_update\WindowsTimeAutoUpdate.exe"  
+oLink.WorkingDirectory = "G:\我的雲端硬碟\安成工作資料\同步區\case\windows_time_auto_update"  
+If CreateObject("Scripting.FileSystemObject").FileExists("G:\我的雲端硬碟\安成工作資料\同步區\case\windows_time_auto_update\app_icon.ico") Then  
+oLink.IconLocation = "G:\我的雲端硬碟\安成工作資料\同步區\case\windows_time_auto_update\app_icon.ico,0"  
+End If  
+oLink.Save  

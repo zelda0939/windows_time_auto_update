@@ -29,6 +29,8 @@ class TimeSyncScheduler:
         interval_unit: str = "minutes",
         server_provider: Optional[Callable[[], Union[str, List[str]]]] = None,
         threshold_provider: Optional[Callable[[], Optional[float]]] = None,
+        http_fallback_provider: Optional[Callable[[], bool]] = None,
+        http_servers_provider: Optional[Callable[[], Optional[List[str]]]] = None,
         on_sync_start: Optional[Callable[[], None]] = None,
         on_sync_finish: Optional[Callable[[Dict], None]] = None,
         on_tick: Optional[Callable[[float, str], None]] = None,
@@ -41,6 +43,8 @@ class TimeSyncScheduler:
         :param interval_unit: 間隔單位 ("seconds", "minutes", "hours", "days", 預設 "minutes")
         :param server_provider: 回傳目前選擇之 NTP 伺服器 (單一或列表) 的回呼函式
         :param threshold_provider: 回傳目前設定之誤差閾值 (秒數，若無則為 None) 的回呼函式
+        :param http_fallback_provider: 回傳是否啟用 HTTPS 備援校時的回呼函式
+        :param http_servers_provider: 回傳 HTTPS 備援伺服器列表的回呼函式
         :param on_sync_start: 同步即將開始時觸發的回呼
         :param on_sync_finish: 同步完成時觸發的回呼 (帶入同步結果字典)
         :param on_tick: 每秒倒數計時觸發的回呼 (帶入剩餘秒數與格式化字串)
@@ -52,6 +56,8 @@ class TimeSyncScheduler:
         )
         self.server_provider = server_provider
         self.threshold_provider = threshold_provider
+        self.http_fallback_provider = http_fallback_provider
+        self.http_servers_provider = http_servers_provider
 
         self.on_sync_start = on_sync_start
         self.on_sync_finish = on_sync_finish
@@ -205,6 +211,24 @@ class TimeSyncScheduler:
                 pass
         return None
 
+    def _get_http_fallback_enabled(self) -> bool:
+        """取得目前是否啟用 HTTPS 備援校時"""
+        if self.http_fallback_provider:
+            try:
+                return bool(self.http_fallback_provider())
+            except Exception:
+                pass
+        return True
+
+    def _get_http_servers(self) -> Optional[List[str]]:
+        """取得自訂的 HTTPS 備援伺服器列表"""
+        if self.http_servers_provider:
+            try:
+                return self.http_servers_provider()
+            except Exception:
+                pass
+        return None
+
     def _perform_sync(self, ignore_threshold: bool = False):
         """執行時間同步程序並觸發相關回呼"""
         if self._is_syncing:
@@ -221,7 +245,15 @@ class TimeSyncScheduler:
 
         server = self._get_target_servers()
         threshold = None if ignore_threshold else self._get_threshold_seconds()
-        result = self.syncer.sync_time(server, threshold_seconds=threshold)
+        http_fallback = self._get_http_fallback_enabled()
+        http_servers = self._get_http_servers()
+
+        result = self.syncer.sync_time(
+            server,
+            threshold_seconds=threshold,
+            enable_http_fallback=http_fallback,
+            http_servers=http_servers,
+        )
 
         with self._lock:
             self._last_sync_time = datetime.now()

@@ -67,11 +67,14 @@ def release_single_instance():
 
 def run_sync_once_cli(server: str = "tock.stdtime.gov.tw"):
     """命令列單次校時模式"""
-    print(f"[*] 正在向 NTP 伺服器 '{server}' 查詢時間...")
+    print(f"[*] 正在向時間伺服器 '{server}' 查詢時間 (支援 HTTPS 備援)...")
     syncer = TimeSyncer()
     res = syncer.sync_time(server)
     if res.get("success"):
-        print(f"[+] 校時成功！")
+        proto = res.get("protocol", "NTP")
+        fallback_str = " [HTTPS 備援通道]" if res.get("is_fallback") else ""
+        print(f"[+] 校時成功！{fallback_str}")
+        print(f"    通訊協定: {proto}")
         print(f"    伺服器: {res.get('server')} ({res.get('server_ip')})")
         print(f"    網路往返延遲: {res.get('delay_ms')} ms")
         print(f"    時間校正誤差: {res.get('offset_ms')} ms")

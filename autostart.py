@@ -21,6 +21,7 @@ DEPLOY_FILES = [
     "main.py",
     "gui.py",
     "ntp_client.py",
+    "http_time_client.py",
     "time_syncer.py",
     "scheduler.py",
     "config_manager.py",

@@ -2,14 +2,21 @@
     "auto_sync": true,
     "interval_value": 1,
     "interval_unit": "minutes",
-    "selected_server": "time.cloudflare.com",
+    "selected_server": "tock.stdtime.gov.tw",
     "use_fallback": true,
     "custom_servers": [],
-    "auto_start": true,
+    "auto_start": false,
     "start_minimized": false,
     "minimize_to_tray": true,
     "show_notifications": true,
     "sync_on_startup": true,
     "threshold_sync_enabled": true,
-    "threshold_seconds": 60
+    "threshold_seconds": 60,
+    "enable_http_fallback": true,
+    "http_fallback_servers": [
+        "www.google.com",
+        "www.cloudflare.com",
+        "www.microsoft.com",
+        "www.apple.com"
+    ]
 }

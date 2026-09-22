@@ -69,6 +69,8 @@ class ModernTimeSyncGUI:
             interval_unit=self.config_mgr.get("interval_unit", "minutes"),
             server_provider=self._get_current_server_target,
             threshold_provider=self._get_current_threshold,
+            http_fallback_provider=lambda: self.var_enable_http_fallback.get(),
+            http_servers_provider=lambda: self.config_mgr.get("http_fallback_servers", None),
             on_sync_start=self._on_sync_start_callback,
             on_sync_finish=self._on_sync_finish_callback,
             on_tick=self._on_tick_callback,
@@ -107,6 +109,9 @@ class ModernTimeSyncGUI:
         self.var_use_fallback = tk.BooleanVar(
             value=self.config_mgr.get("use_fallback", True)
         )
+        self.var_enable_http_fallback = tk.BooleanVar(
+            value=self.config_mgr.get("enable_http_fallback", True)
+        )
         self.var_auto_start = tk.BooleanVar(
             value=is_autostart_enabled()
         )
@@ -121,6 +126,7 @@ class ModernTimeSyncGUI:
         self.var_clock_time = tk.StringVar(value="--:--:--")
         self.var_clock_date = tk.StringVar(value="----/--/--")
         self.var_status_badge = tk.StringVar(value="待命中")
+        self.var_protocol = tk.StringVar(value="🟢 NTP (UDP 123)")
         self.var_last_sync = tk.StringVar(value="尚未同步")
         self.var_offset_ms = tk.StringVar(value="-- ms")
         self.var_delay_ms = tk.StringVar(value="-- ms")
@@ -364,6 +370,42 @@ class ModernTimeSyncGUI:
         f4.grid(row=1, column=1, sticky="nsew", padx=4, pady=4)
         tk.Label(f4, text="往返網路延遲 (RTT)", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=8, pady=(4, 0))
         tk.Label(f4, textvariable=self.var_delay_ms, font=("Consolas", 11, "bold"), fg="#FCD34D", bg="#1E293B").pack(anchor="w", padx=8, pady=(0, 4))
+
+        # 底部狀態列：校時協定與通道狀態
+        proto_bar = tk.Frame(card, bg="#0B1120", bd=0)
+        proto_bar.pack(fill="x", padx=16, pady=(0, 10))
+
+        tk.Label(
+            proto_bar,
+            text="📡 校時通訊協定：",
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_MUTED,
+            bg="#0B1120",
+        ).pack(side="left", padx=(8, 2), pady=4)
+
+        tk.Label(
+            proto_bar,
+            textvariable=self.var_protocol,
+            font=("Microsoft JhengHei UI", 8, "bold"),
+            fg="#67E8F9",
+            bg="#0B1120",
+        ).pack(side="left", pady=4)
+
+        tk.Label(
+            proto_bar,
+            text=" |  🎯 目標伺服器：",
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_MUTED,
+            bg="#0B1120",
+        ).pack(side="left", padx=(8, 2), pady=4)
+
+        tk.Label(
+            proto_bar,
+            textvariable=self.var_active_server,
+            font=("Consolas", 8, "bold"),
+            fg=TEXT_SECONDARY,
+            bg="#0B1120",
+        ).pack(side="left", pady=4)
 
     def _build_schedule_card(self, parent):
         """建構左半部：更新頻率與排程卡片"""
@@ -624,6 +666,38 @@ class ModernTimeSyncGUI:
         )
         btn_add_custom.pack(side="right")
 
+        btn_del_custom = tk.Button(
+            sub_row,
+            text="🗑️ 刪除自訂",
+            font=("Microsoft JhengHei UI", 8),
+            fg="#F87171",
+            bg=CARD_BG,
+            activebackground=CARD_BG,
+            activeforeground="#EF4444",
+            bd=0,
+            cursor="hand2",
+            command=self._delete_selected_custom_server,
+        )
+        btn_del_custom.pack(side="right", padx=(0, 6))
+
+        # HTTPS 備援核取方塊列
+        http_row = tk.Frame(body, bg=CARD_BG)
+        http_row.pack(fill="x", pady=(2, 0))
+
+        chk_http = tk.Checkbutton(
+            http_row,
+            text="UDP 123 受阻時切換 HTTPS (TCP 443) 備援",
+            variable=self.var_enable_http_fallback,
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_SECONDARY,
+            bg=CARD_BG,
+            activebackground=CARD_BG,
+            activeforeground=TEXT_SECONDARY,
+            selectcolor=INPUT_BG,
+            command=self._on_http_fallback_toggled,
+        )
+        chk_http.pack(side="left")
+
     def _build_actions_and_options(self, parent):
         """建構系統選項勾選區與底部動作按鈕"""
         opt_card = self._create_card(parent)
@@ -847,6 +921,21 @@ class ModernTimeSyncGUI:
         else:
             self.log("已停用智慧閾值模式：定時自動強制寫入同步", level="info")
 
+    def _on_http_fallback_toggled(self):
+        """HTTPS 備援模式 Checkbox 事件"""
+        enabled = self.var_enable_http_fallback.get()
+        self.config_mgr.set("enable_http_fallback", enabled)
+        if enabled:
+            self.log(
+                "已啟用 HTTPS (TCP 443) 備援校時：當 UDP 123 受限或遭網管封鎖時自動切換",
+                level="info",
+            )
+        else:
+            self.log(
+                "已停用 HTTPS 備援校時：僅使用標準 NTP (UDP 123)",
+                level="warning",
+            )
+
     def _on_sync_finish_callback(self, result: Dict):
         """同步完成回呼"""
 
@@ -858,6 +947,14 @@ class ModernTimeSyncGUI:
                 offset_ms = result.get("offset_ms")
                 delay_ms = result.get("delay_ms")
                 time_str = result.get("time_str", "")
+                protocol = result.get("protocol", "NTP")
+                is_fallback = result.get("is_fallback", False)
+
+                # 更新協定與通道狀態標籤
+                if is_fallback:
+                    self.var_protocol.set("🌐 HTTPS 備援 (TCP 443)")
+                else:
+                    self.var_protocol.set(f"🟢 {protocol} (UDP 123)")
 
                 self.var_offset_ms.set(f"{offset_ms} ms" if offset_ms is not None else "--")
                 self.var_delay_ms.set(f"{delay_ms} ms" if delay_ms is not None else "--")
@@ -871,11 +968,15 @@ class ModernTimeSyncGUI:
                     # 成功寫入
                     self.var_last_sync.set(time_str)
                     msg = result.get("message", "校時成功")
-                    self.log(f"✅ {msg}", level="success")
+                    if is_fallback:
+                        self.log(f"🌐 {msg}", level="warning")
+                    else:
+                        self.log(f"✅ {msg}", level="success")
 
                     if self.var_show_notifications.get():
+                        notify_suffix = " (透過 HTTPS 備援)" if is_fallback else ""
                         self.tray_mgr.notify(
-                            f"校時成功！已修正時間誤差 {offset_ms} ms",
+                            f"校時成功{notify_suffix}！已修正時間誤差 {offset_ms} ms",
                             title="Windows 自動校時工具",
                         )
             else:
@@ -1116,6 +1217,57 @@ class ModernTimeSyncGUI:
             command=dialog.destroy,
         )
         btn_cancel.pack(side="right", padx=8)
+
+    def _delete_selected_custom_server(self):
+        """刪除目前選中的自訂 NTP 伺服器"""
+        selected_host = self.var_selected_server.get()
+        custom_servers = self.config_mgr.get("custom_servers", [])
+
+        # 尋找是否為自訂伺服器
+        target_custom = None
+        for c in custom_servers:
+            c_host = c["host"] if isinstance(c, dict) else str(c)
+            if c_host.lower() == selected_host.lower():
+                target_custom = c
+                break
+
+        if not target_custom:
+            messagebox.showinfo(
+                "無法刪除",
+                "目前選中的是系統內建的預設 NTP 伺服器，無法刪除。\n僅能刪除使用者手動新增的自訂伺服器。",
+                parent=self.root,
+            )
+            return
+
+        c_name = (
+            target_custom.get("name", selected_host)
+            if isinstance(target_custom, dict)
+            else selected_host
+        )
+        confirmed = messagebox.askyesno(
+            "確認刪除",
+            f"確定要刪除自訂 NTP 伺服器「{c_name}」({selected_host}) 嗎？",
+            parent=self.root,
+        )
+        if not confirmed:
+            return
+
+        self.config_mgr.remove_custom_server(selected_host)
+
+        # 重新整理伺服器清單並切換回第一台預設伺服器
+        self.server_items = self.config_mgr.get_all_servers()
+        self.server_display_list = [
+            f"{s['name']} [{s['host']}]" for s in self.server_items
+        ]
+        self.cbo_server["values"] = self.server_display_list
+
+        first_server = self.server_items[0]
+        self.var_server_display.set(self.server_display_list[0])
+        self.var_selected_server.set(first_server["host"])
+        self.config_mgr.set("selected_server", first_server["host"])
+
+        self.log(f"已成功刪除自訂 NTP 伺服器：{selected_host}", level="info")
+        messagebox.showinfo("成功", f"已刪除自訂伺服器：{selected_host}", parent=self.root)
 
     def _on_autostart_toggled(self):
         """開機自動啟動 Checkbox 事件"""
