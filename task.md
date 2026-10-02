@@ -1,14 +1,8 @@
-# 任務進度清單 (Task List)
+# 任務清單：小螢幕日誌顯示空間優化
 
-- [x] 初始化專案環境與依賴套件 (`requirements.txt`, `pystray`, `Pillow`) <!-- id: 0 -->
-- [x] 實作 NTP 客戶端核心 (`ntp_client.py`) <!-- id: 1 -->
-- [x] 實作 Windows 時間同步與權限管理 (`time_syncer.py`) <!-- id: 2 -->
-- [x] 實作自訂頻率與背景排程器 (`scheduler.py`) <!-- id: 3 -->
-- [x] 實作設定檔管理模組 (`config_manager.py`) <!-- id: 4 -->
-- [x] 實作開機自動啟動管理 (`autostart.py`) <!-- id: 5 -->
-- [x] 實作系統匣常駐與通知模組 (`tray_icon.py`) <!-- id: 6 -->
-- [x] 實作現代化 GUI 儀表板 (`gui.py`) <!-- id: 7 -->
-- [x] 實作主程式進入點與命令列支援 (`main.py`) <!-- id: 8 -->
-- [x] 建立一鍵啟動腳本與使用說明文檔 (`run.bat`, `run_admin.bat`, `build_exe.bat`, `README.md`) <!-- id: 9 -->
-- [x] 完整單元測試與功能驗證 (`test_suite.py`) <!-- id: 10 -->
-- [x] 更新 Project Memory 與成果報告 (`walkthrough.md`) <!-- id: 11 -->
+## 待辦事項
+- [x] 步驟 1：分析並實作版面垂直邊距緊湊化（Compact Layout）與自適應最小高度 <!-- id: 0 -->
+- [x] 步驟 2：實作中間設定卡片（排程與 NTP 設定）一鍵折疊/展開功能 <!-- id: 1 -->
+- [x] 步驟 3：在日誌工具列實作日誌專注模式（一鍵全展開 / 還原視圖） <!-- id: 2 -->
+- [x] 步驟 4：進行全面測試與驗證（語法檢查、單元測試與功能驗證） <!-- id: 3 -->
+- [x] 步驟 5：更新專案記憶庫 (`.agent/memory.md`) 與工作進程紀錄 (`walkthrough.md`) <!-- id: 4 -->

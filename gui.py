@@ -10,7 +10,7 @@ import threading
 import time
 import tkinter as tk
 from datetime import datetime, timezone
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Dict, List, Optional
 
 from PIL import ImageTk
@@ -49,8 +49,18 @@ class ModernTimeSyncGUI:
         self.root = root
         self.config_mgr = config_mgr
         self.root.title("Windows 網路自動校時工具")
-        self.root.geometry("820x760")
-        self.root.minsize(780, 680)
+
+        # 智慧自適應螢幕解析度 (針對小螢幕筆電與高 DPI 縮放最佳化)
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        default_w = min(820, max(740, screen_w - 40))
+        # 若螢幕高度較小 (如 768p 筆電或 150% 縮放)，預設高度自動緊湊化
+        if screen_h <= 800:
+            default_h = min(660, screen_h - 70)
+        else:
+            default_h = 720
+        self.root.geometry(f"{default_w}x{default_h}")
+        self.root.minsize(740, 480)
         self.root.configure(bg=BG_DARK)
 
         # 設定視窗與工具列圖示
@@ -135,6 +145,17 @@ class ModernTimeSyncGUI:
             value=self.config_mgr.get("selected_server", "tock.stdtime.gov.tw")
         )
 
+        # 日誌篩選與歷史紀錄變數
+        self.log_entries: List[Dict[str, str]] = []
+        self.var_log_filter_level = tk.StringVar(value="全部種類")
+        self.var_log_search = tk.StringVar(value="")
+        self.var_log_count = tk.StringVar(value="顯示: 0 / 0 筆")
+
+        # 版面展開/收合狀態變數
+        self.is_settings_collapsed = False
+        self.is_log_maximized = False
+        self.var_settings_summary = tk.StringVar(value="")
+
         # 載入樣式與佈局
         self._setup_styles()
         self._build_ui()
@@ -214,35 +235,112 @@ class ModernTimeSyncGUI:
         return card
 
     def _build_ui(self):
-        """建構主要視窗 UI"""
-        main_container = tk.Frame(self.root, bg=BG_DARK)
-        main_container.pack(fill="both", expand=True, padx=16, pady=14)
+        """建構主要視窗 UI (支援緊湊佈局、設定折疊與日誌專注模式)"""
+        self.main_container = tk.Frame(self.root, bg=BG_DARK)
+        self.main_container.pack(fill="both", expand=True, padx=14, pady=8)
 
         # 1. 頂部標題與管理員狀態區
-        self._build_header(main_container)
+        self.header_frame = self._build_header(self.main_container)
 
         # 2. 上方：即時時鐘與同步狀態儀表卡片
-        self._build_dashboard_card(main_container)
+        self.dashboard_card = self._build_dashboard_card(self.main_container)
 
-        # 3. 中間：排程頻率設定卡片 與 NTP 伺服器設定卡片 (雙欄配置)
-        settings_frame = tk.Frame(main_container, bg=BG_DARK)
-        settings_frame.pack(fill="x", pady=(0, 10))
-        settings_frame.columnconfigure(0, weight=1)
-        settings_frame.columnconfigure(1, weight=1)
+        # 3. 中間：排程頻率設定卡片 與 NTP 伺服器設定卡片 (支援一鍵折疊)
+        self.settings_container = tk.Frame(self.main_container, bg=BG_DARK)
+        self.settings_container.pack(fill="x", pady=(0, 6))
 
-        self._build_schedule_card(settings_frame)
-        self._build_ntp_card(settings_frame)
+        # 設定折疊控制列
+        self._build_settings_collapse_bar(self.settings_container)
+
+        # 設定雙欄卡片容器
+        self.settings_frame = tk.Frame(self.settings_container, bg=BG_DARK)
+        self.settings_frame.pack(fill="x", pady=(3, 0))
+        self.settings_frame.columnconfigure(0, weight=1)
+        self.settings_frame.columnconfigure(1, weight=1)
+
+        self._build_schedule_card(self.settings_frame)
+        self._build_ntp_card(self.settings_frame)
 
         # 4. 下方：系統選項與操作按鈕區
-        self._build_actions_and_options(main_container)
+        self.actions_card = self._build_actions_and_options(self.main_container)
 
-        # 5. 底部：即時同步記錄日誌終端
-        self._build_log_console(main_container)
+        # 5. 底部：即時同步記錄日誌終端 (支援一鍵展開最大化)
+        self.log_card = self._build_log_console(self.main_container)
+
+        # 初始化設定摘要字串
+        self._update_settings_summary()
+
+    def _build_settings_collapse_bar(self, parent):
+        """建構排程與 NTP 設定區域的收合/展開控制列"""
+        bar = tk.Frame(parent, bg=BG_DARK)
+        bar.pack(fill="x", pady=(0, 1))
+
+        # 裝飾圖示與標籤
+        lbl_icon = tk.Label(
+            bar, text="⚙️", font=("Microsoft JhengHei UI", 9), fg=TEXT_SECONDARY, bg=BG_DARK
+        )
+        lbl_icon.pack(side="left", padx=(0, 4))
+
+        lbl_title = tk.Label(
+            bar,
+            text="排程頻率與 NTP 伺服器設定",
+            font=("Microsoft JhengHei UI", 9, "bold"),
+            fg=TEXT_SECONDARY,
+            bg=BG_DARK,
+        )
+        lbl_title.pack(side="left")
+
+        # 當前設定摘要小字 (收合時也能一目了然)
+        self.lbl_settings_summary = tk.Label(
+            bar,
+            textvariable=self.var_settings_summary,
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_MUTED,
+            bg=BG_DARK,
+        )
+        self.lbl_settings_summary.pack(side="left", padx=(8, 0))
+
+        # 收合 / 展開切換按鈕
+        self.btn_toggle_settings = tk.Button(
+            bar,
+            text="▲ 收合設定",
+            font=("Microsoft JhengHei UI", 8),
+            fg=ACCENT_BLUE,
+            bg=BG_DARK,
+            activebackground=BG_DARK,
+            activeforeground="#60A5FA",
+            bd=0,
+            cursor="hand2",
+            command=self._toggle_settings_collapsed,
+        )
+        self.btn_toggle_settings.pack(side="right")
+
+    def _toggle_settings_collapsed(self):
+        """切換排程與伺服器設定卡片之收合/展開狀態"""
+        self.is_settings_collapsed = not self.is_settings_collapsed
+        if self.is_settings_collapsed:
+            self.settings_frame.pack_forget()
+            self.btn_toggle_settings.config(text="▼ 展開設定", fg=SUCCESS_GREEN)
+            self._update_settings_summary()
+        else:
+            self.settings_frame.pack(fill="x", pady=(3, 0))
+            self.btn_toggle_settings.config(text="▲ 收合設定", fg=ACCENT_BLUE)
+
+    def _update_settings_summary(self):
+        """更新收合條上的簡要設定資訊"""
+        try:
+            val = self.var_interval_val.get()
+            unit_display = self.var_unit_display.get().split()[0]
+            srv = self.var_selected_server.get()
+            thresh_info = f" | 閾值: {self.var_threshold_sec.get()}s" if self.var_threshold_enabled.get() else ""
+            self.var_settings_summary.set(f"({val} {unit_display} | {srv}{thresh_info})")
+        except Exception:
+            pass
 
     def _build_header(self, parent):
         """建構頂部 Header 欄位"""
         header = tk.Frame(parent, bg=BG_DARK)
-        header.pack(fill="x", pady=(0, 10))
+        header.pack(fill="x", pady=(0, 6))
 
         # 左側標題
         title_box = tk.Frame(header, bg=BG_DARK)
@@ -299,19 +397,21 @@ class ModernTimeSyncGUI:
             )
             btn_elevate.pack(side="right")
 
+        return header
+
     def _build_dashboard_card(self, parent):
-        """建構即時時鐘與同步狀態儀表卡片"""
+        """建構即時時鐘與同步狀態儀表卡片 (緊湊現代化佈局)"""
         card = self._create_card(parent)
-        card.pack(fill="x", pady=(0, 10))
+        card.pack(fill="x", pady=(0, 6))
 
         inner = tk.Frame(card, bg=CARD_BG)
-        inner.pack(fill="x", padx=16, pady=12)
+        inner.pack(fill="x", padx=12, pady=8)
         inner.columnconfigure(0, weight=4)
         inner.columnconfigure(1, weight=5)
 
         # 左側：動態即時大時鐘
         clock_box = tk.Frame(inner, bg="#111827", bd=1, relief="solid", highlightbackground=CARD_BORDER, highlightthickness=1)
-        clock_box.grid(row=0, column=0, sticky="nsew", padx=(0, 12), pady=2)
+        clock_box.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=1)
 
         lbl_clock_title = tk.Label(
             clock_box,
@@ -320,25 +420,25 @@ class ModernTimeSyncGUI:
             fg=TEXT_SECONDARY,
             bg="#111827",
         )
-        lbl_clock_title.pack(anchor="w", padx=14, pady=(8, 0))
+        lbl_clock_title.pack(anchor="w", padx=12, pady=(4, 0))
 
         lbl_time = tk.Label(
             clock_box,
             textvariable=self.var_clock_time,
-            font=("Consolas", 24, "bold"),
+            font=("Consolas", 23, "bold"),
             fg="#38BDF8",  # 亮藍色時鐘字
             bg="#111827",
         )
-        lbl_time.pack(padx=14, pady=(2, 0))
+        lbl_time.pack(padx=12, pady=(1, 0))
 
         lbl_date = tk.Label(
             clock_box,
             textvariable=self.var_clock_date,
-            font=("Consolas", 10),
+            font=("Consolas", 9),
             fg=TEXT_MUTED,
             bg="#111827",
         )
-        lbl_date.pack(padx=14, pady=(0, 8))
+        lbl_date.pack(padx=12, pady=(0, 4))
 
         # 右側：狀態儀表板數值 (2x2 Grid)
         metrics_box = tk.Frame(inner, bg=CARD_BG)
@@ -348,32 +448,32 @@ class ModernTimeSyncGUI:
 
         # 區塊 1: 狀態 / 下次同步倒數
         f1 = tk.Frame(metrics_box, bg="#1E293B")
-        f1.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
-        tk.Label(f1, text="下次自動同步倒數", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=8, pady=(4, 0))
-        self.lbl_countdown_val = tk.Label(f1, textvariable=self.var_countdown, font=("Consolas", 13, "bold"), fg=ACCENT_BLUE, bg="#1E293B")
-        self.lbl_countdown_val.pack(anchor="w", padx=8, pady=(0, 4))
+        f1.grid(row=0, column=0, sticky="nsew", padx=3, pady=2)
+        tk.Label(f1, text="下次自動同步倒數", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=6, pady=(3, 0))
+        self.lbl_countdown_val = tk.Label(f1, textvariable=self.var_countdown, font=("Consolas", 12, "bold"), fg=ACCENT_BLUE, bg="#1E293B")
+        self.lbl_countdown_val.pack(anchor="w", padx=6, pady=(0, 3))
 
         # 區塊 2: 上次同步時間
         f2 = tk.Frame(metrics_box, bg="#1E293B")
-        f2.grid(row=0, column=1, sticky="nsew", padx=4, pady=4)
-        tk.Label(f2, text="上次校時時間", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=8, pady=(4, 0))
-        tk.Label(f2, textvariable=self.var_last_sync, font=("Consolas", 10, "bold"), fg=TEXT_PRIMARY, bg="#1E293B").pack(anchor="w", padx=8, pady=(2, 4))
+        f2.grid(row=0, column=1, sticky="nsew", padx=3, pady=2)
+        tk.Label(f2, text="上次校時時間", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=6, pady=(3, 0))
+        tk.Label(f2, textvariable=self.var_last_sync, font=("Consolas", 10, "bold"), fg=TEXT_PRIMARY, bg="#1E293B").pack(anchor="w", padx=6, pady=(1, 3))
 
         # 區塊 3: 時間誤差 Offset
         f3 = tk.Frame(metrics_box, bg="#1E293B")
-        f3.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
-        tk.Label(f3, text="校正時間偏差 (Offset)", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=8, pady=(4, 0))
-        tk.Label(f3, textvariable=self.var_offset_ms, font=("Consolas", 11, "bold"), fg=SUCCESS_GREEN, bg="#1E293B").pack(anchor="w", padx=8, pady=(0, 4))
+        f3.grid(row=1, column=0, sticky="nsew", padx=3, pady=2)
+        tk.Label(f3, text="校正時間偏差 (Offset)", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=6, pady=(3, 0))
+        tk.Label(f3, textvariable=self.var_offset_ms, font=("Consolas", 11, "bold"), fg=SUCCESS_GREEN, bg="#1E293B").pack(anchor="w", padx=6, pady=(0, 3))
 
         # 區塊 4: 網路延遲 Delay
         f4 = tk.Frame(metrics_box, bg="#1E293B")
-        f4.grid(row=1, column=1, sticky="nsew", padx=4, pady=4)
-        tk.Label(f4, text="往返網路延遲 (RTT)", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=8, pady=(4, 0))
-        tk.Label(f4, textvariable=self.var_delay_ms, font=("Consolas", 11, "bold"), fg="#FCD34D", bg="#1E293B").pack(anchor="w", padx=8, pady=(0, 4))
+        f4.grid(row=1, column=1, sticky="nsew", padx=3, pady=2)
+        tk.Label(f4, text="往返網路延遲 (RTT)", font=("Microsoft JhengHei UI", 8), fg=TEXT_SECONDARY, bg="#1E293B").pack(anchor="w", padx=6, pady=(3, 0))
+        tk.Label(f4, textvariable=self.var_delay_ms, font=("Consolas", 11, "bold"), fg="#FCD34D", bg="#1E293B").pack(anchor="w", padx=6, pady=(0, 3))
 
         # 底部狀態列：校時協定與通道狀態
         proto_bar = tk.Frame(card, bg="#0B1120", bd=0)
-        proto_bar.pack(fill="x", padx=16, pady=(0, 10))
+        proto_bar.pack(fill="x", padx=12, pady=(0, 6))
 
         tk.Label(
             proto_bar,
@@ -381,7 +481,7 @@ class ModernTimeSyncGUI:
             font=("Microsoft JhengHei UI", 8),
             fg=TEXT_MUTED,
             bg="#0B1120",
-        ).pack(side="left", padx=(8, 2), pady=4)
+        ).pack(side="left", padx=(8, 2), pady=3)
 
         tk.Label(
             proto_bar,
@@ -389,7 +489,7 @@ class ModernTimeSyncGUI:
             font=("Microsoft JhengHei UI", 8, "bold"),
             fg="#67E8F9",
             bg="#0B1120",
-        ).pack(side="left", pady=4)
+        ).pack(side="left", pady=3)
 
         tk.Label(
             proto_bar,
@@ -397,7 +497,7 @@ class ModernTimeSyncGUI:
             font=("Microsoft JhengHei UI", 8),
             fg=TEXT_MUTED,
             bg="#0B1120",
-        ).pack(side="left", padx=(8, 2), pady=4)
+        ).pack(side="left", padx=(8, 2), pady=3)
 
         tk.Label(
             proto_bar,
@@ -405,7 +505,9 @@ class ModernTimeSyncGUI:
             font=("Consolas", 8, "bold"),
             fg=TEXT_SECONDARY,
             bg="#0B1120",
-        ).pack(side="left", pady=4)
+        ).pack(side="left", pady=3)
+
+        return card
 
     def _build_schedule_card(self, parent):
         """建構左半部：更新頻率與排程卡片"""
@@ -699,12 +801,12 @@ class ModernTimeSyncGUI:
         chk_http.pack(side="left")
 
     def _build_actions_and_options(self, parent):
-        """建構系統選項勾選區與底部動作按鈕"""
+        """建構系統選項勾選區與底部動作按鈕 (緊湊版面)"""
         opt_card = self._create_card(parent)
-        opt_card.pack(fill="x", pady=(0, 10))
+        opt_card.pack(fill="x", pady=(0, 6))
 
         inner = tk.Frame(opt_card, bg=CARD_BG)
-        inner.pack(fill="x", padx=14, pady=10)
+        inner.pack(fill="x", padx=12, pady=6)
 
         # 系統選項 Checkboxes
         opts_box = tk.Frame(inner, bg=CARD_BG)
@@ -722,7 +824,7 @@ class ModernTimeSyncGUI:
             selectcolor=INPUT_BG,
             command=self._on_autostart_toggled,
         )
-        chk_autostart.grid(row=0, column=0, sticky="w", padx=(0, 12), pady=2)
+        chk_autostart.grid(row=0, column=0, sticky="w", padx=(0, 10), pady=1)
 
         chk_min_tray = tk.Checkbutton(
             opts_box,
@@ -738,7 +840,7 @@ class ModernTimeSyncGUI:
                 "minimize_to_tray", self.var_min_to_tray.get()
             ),
         )
-        chk_min_tray.grid(row=0, column=1, sticky="w", padx=(0, 12), pady=2)
+        chk_min_tray.grid(row=0, column=1, sticky="w", padx=(0, 10), pady=1)
 
         chk_notify = tk.Checkbutton(
             opts_box,
@@ -754,7 +856,7 @@ class ModernTimeSyncGUI:
                 "show_notifications", self.var_show_notifications.get()
             ),
         )
-        chk_notify.grid(row=0, column=2, sticky="w", pady=2)
+        chk_notify.grid(row=0, column=2, sticky="w", pady=1)
 
         # 右側動作按鈕組
         btn_box = tk.Frame(inner, bg=CARD_BG)
@@ -764,18 +866,18 @@ class ModernTimeSyncGUI:
         self.btn_sync_now = tk.Button(
             btn_box,
             text="⚡ 立即同步時間",
-            font=("Microsoft JhengHei UI", 10, "bold"),
+            font=("Microsoft JhengHei UI", 9, "bold"),
             fg="#FFFFFF",
             bg=ACCENT_BLUE,
             activebackground=ACCENT_BLUE_HOVER,
             activeforeground="#FFFFFF",
             bd=0,
-            padx=14,
-            pady=6,
+            padx=12,
+            pady=4,
             cursor="hand2",
             command=self.trigger_sync_now,
         )
-        self.btn_sync_now.pack(side="right", padx=(8, 0))
+        self.btn_sync_now.pack(side="right", padx=(6, 0))
 
         # 套用設定按鈕
         btn_save = tk.Button(
@@ -787,37 +889,154 @@ class ModernTimeSyncGUI:
             activebackground="#475569",
             activeforeground=TEXT_PRIMARY,
             bd=0,
-            padx=10,
-            pady=6,
+            padx=9,
+            pady=4,
             cursor="hand2",
             command=self._apply_schedule_settings,
         )
         btn_save.pack(side="right")
 
+        return opt_card
+
     def _build_log_console(self, parent):
-        """建構日誌終端區塊"""
+        """建構日誌終端區塊 (含特定種類篩選、關鍵字搜尋、匯出與專注展開功能)"""
         card = self._create_card(parent, title="📜 即時校時日誌記錄 (Log)")
         card.pack(fill="both", expand=True)
 
-        header_actions = tk.Frame(card, bg=CARD_BG)
-        header_actions.place(relx=1.0, y=10, anchor="ne", x=-14)
+        # 頂部控制與篩選工具列
+        toolbar = tk.Frame(card, bg=CARD_BG)
+        toolbar.pack(fill="x", padx=12, pady=(2, 4))
 
-        btn_clear_log = tk.Button(
-            header_actions,
-            text="清空記錄",
-            font=("Microsoft JhengHei UI", 8),
+        # --- 左側篩選與搜尋控制項 ---
+        # 1. 種類篩選下拉選單
+        lbl_filter = tk.Label(
+            toolbar,
+            text="種類：",
+            font=("Microsoft JhengHei UI", 9),
+            fg=TEXT_SECONDARY,
+            bg=CARD_BG,
+        )
+        lbl_filter.pack(side="left")
+
+        filter_options = [
+            "全部種類",
+            "✅ 成功訊息 (Success)",
+            "ℹ️ 一般資訊 (Info)",
+            "⚠️ 警告提示 (Warning)",
+            "❌ 錯誤異常 (Error)",
+            "🌐 HTTPS 備援",
+            "⏰ 校時紀錄",
+        ]
+        self.cbo_log_filter = ttk.Combobox(
+            toolbar,
+            textvariable=self.var_log_filter_level,
+            values=filter_options,
+            state="readonly",
+            width=16,
+            style="Dark.TCombobox",
+        )
+        self.cbo_log_filter.pack(side="left", padx=(0, 8))
+        self.cbo_log_filter.bind("<<ComboboxSelected>>", lambda e: self._refresh_log_view())
+
+        # 2. 關鍵字搜尋輸入框
+        lbl_search = tk.Label(
+            toolbar,
+            text="🔍 搜尋：",
+            font=("Microsoft JhengHei UI", 9),
+            fg=TEXT_SECONDARY,
+            bg=CARD_BG,
+        )
+        lbl_search.pack(side="left")
+
+        ent_search = tk.Entry(
+            toolbar,
+            textvariable=self.var_log_search,
+            font=("Microsoft JhengHei UI", 9),
+            width=10,
+            bg=INPUT_BG,
+            fg=TEXT_PRIMARY,
+            insertbackground=TEXT_PRIMARY,
+            bd=1,
+            relief="solid",
+            highlightbackground=CARD_BORDER,
+            highlightcolor=ACCENT_BLUE,
+        )
+        ent_search.pack(side="left", padx=(0, 2))
+        ent_search.bind("<KeyRelease>", lambda e: self._refresh_log_view())
+
+        btn_clear_search = tk.Button(
+            toolbar,
+            text="✕",
+            font=("Consolas", 8, "bold"),
             fg=TEXT_MUTED,
             bg=CARD_BG,
             activebackground=CARD_BG,
             activeforeground=TEXT_PRIMARY,
             bd=0,
             cursor="hand2",
+            command=self._clear_search_text,
+            padx=3,
+            pady=0,
+        )
+        btn_clear_search.pack(side="left", padx=(0, 8))
+
+        # 3. 日誌筆數計數標籤
+        self.lbl_log_count = tk.Label(
+            toolbar,
+            textvariable=self.var_log_count,
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_MUTED,
+            bg=CARD_BG,
+        )
+        self.lbl_log_count.pack(side="left")
+
+        # --- 右側操作按鈕組 ---
+        # 4. 日誌專注模式 / 一鍵展開最大化切換按鈕
+        self.btn_maximize_log = tk.Button(
+            toolbar,
+            text="⛶ 展開視圖",
+            font=("Microsoft JhengHei UI", 8, "bold"),
+            fg=ACCENT_BLUE,
+            bg=CARD_BG,
+            activebackground=CARD_BG,
+            activeforeground="#60A5FA",
+            bd=0,
+            cursor="hand2",
+            command=self._toggle_log_focus_mode,
+        )
+        self.btn_maximize_log.pack(side="right")
+
+        btn_clear_log = tk.Button(
+            toolbar,
+            text="🗑️ 清空",
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_MUTED,
+            bg=CARD_BG,
+            activebackground=CARD_BG,
+            activeforeground="#EF4444",
+            bd=0,
+            cursor="hand2",
             command=self._clear_logs,
         )
-        btn_clear_log.pack(side="right")
+        btn_clear_log.pack(side="right", padx=(0, 6))
 
+        btn_export_log = tk.Button(
+            toolbar,
+            text="💾 匯出",
+            font=("Microsoft JhengHei UI", 8),
+            fg=TEXT_SECONDARY,
+            bg=CARD_BG,
+            activebackground=CARD_BG,
+            activeforeground=TEXT_PRIMARY,
+            bd=0,
+            cursor="hand2",
+            command=self._export_logs,
+        )
+        btn_export_log.pack(side="right", padx=(0, 6))
+
+        # --- 下方終端文字區域 ---
         log_body = tk.Frame(card, bg=CARD_BG)
-        log_body.pack(fill="both", expand=True, padx=14, pady=(4, 12))
+        log_body.pack(fill="both", expand=True, padx=12, pady=(0, 8))
 
         # Text 終端
         self.txt_log = tk.Text(
@@ -850,20 +1069,177 @@ class ModernTimeSyncGUI:
         # 初始歡迎 log
         self.log("程式啟動完成，初始化時間同步排程服務...", level="info")
 
-    def log(self, message: str, level: str = "info"):
-        """輸出日誌到控制台視窗"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return card
+
+    def _toggle_log_focus_mode(self):
+        """切換日誌專注模式 (一鍵全展開 / 還原標準視圖)"""
+        self.is_log_maximized = not self.is_log_maximized
+        if self.is_log_maximized:
+            # 隱藏上方儀表板、設定與選項區塊，最大化日誌顯示空間
+            self.dashboard_card.pack_forget()
+            self.settings_container.pack_forget()
+            self.actions_card.pack_forget()
+            self.btn_maximize_log.config(
+                text="🗗 還原視圖",
+                fg="#FFFFFF",
+                bg="#2563EB",
+                activebackground="#1D4ED8",
+            )
+        else:
+            # 依序還原各區塊
+            self.dashboard_card.pack(fill="x", pady=(0, 6), before=self.log_card)
+            self.settings_container.pack(fill="x", pady=(0, 6), before=self.log_card)
+            self.actions_card.pack(fill="x", pady=(0, 6), before=self.log_card)
+            # 若原本設定卡片是收合的，維持其收合狀態
+            if self.is_settings_collapsed:
+                self.settings_frame.pack_forget()
+            else:
+                self.settings_frame.pack(fill="x", pady=(3, 0))
+            self.btn_maximize_log.config(
+                text="⛶ 展開視圖",
+                fg=ACCENT_BLUE,
+                bg=CARD_BG,
+                activebackground=CARD_BG,
+            )
+
+    def _matches_log_filter(self, entry: Dict[str, str]) -> bool:
+        """檢查單條日誌是否符合種類篩選與搜尋關鍵字"""
+        filter_type = self.var_log_filter_level.get()
+        level = entry.get("level", "info")
+        msg = entry.get("message", "")
+        ts = entry.get("timestamp", "")
+
+        # 1. 種類篩選
+        if "成功" in filter_type or "Success" in filter_type:
+            if level != "success":
+                return False
+        elif "資訊" in filter_type or "Info" in filter_type:
+            if level != "info":
+                return False
+        elif "警告" in filter_type or "Warning" in filter_type:
+            if level != "warning":
+                return False
+        elif "錯誤" in filter_type or "Error" in filter_type:
+            if level != "error":
+                return False
+        elif "HTTPS" in filter_type:
+            if not ("HTTPS" in msg or "443" in msg):
+                return False
+        elif "校時紀錄" in filter_type:
+            if not any(k in msg for k in ("校時", "同步", "NTP", "HTTPS", "時鐘", "誤差", "延遲")):
+                return False
+
+        # 2. 關鍵字搜尋過濾 (不分大小寫)
+        search_kw = self.var_log_search.get().strip().lower()
+        if search_kw:
+            target = f"{ts} {msg}".lower()
+            if search_kw not in target:
+                return False
+
+        return True
+
+    def _refresh_log_view(self):
+        """重新整理日誌終端畫面 (依據當前篩選條件顯示符合的日誌)"""
         self.txt_log.config(state="normal")
-        self.txt_log.insert("end", f"[{timestamp}] ", "timestamp")
-        self.txt_log.insert("end", f"{message}\n", level)
+        self.txt_log.delete("1.0", "end")
+        visible_count = 0
+        for entry in self.log_entries:
+            if self._matches_log_filter(entry):
+                self.txt_log.insert("end", f"[{entry['timestamp']}] ", "timestamp")
+                self.txt_log.insert("end", f"{entry['message']}\n", entry["level"])
+                visible_count += 1
         self.txt_log.see("end")
         self.txt_log.config(state="disabled")
+        total_count = len(self.log_entries)
+        self.var_log_count.set(f"顯示: {visible_count} / {total_count} 筆")
+
+    def _clear_search_text(self):
+        """清除搜尋關鍵字並重新整理畫面"""
+        if self.var_log_search.get():
+            self.var_log_search.set("")
+            self._refresh_log_view()
+
+    def log(self, message: str, level: str = "info"):
+        """輸出日誌並納入歷史記錄，支援動態篩選"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entry = {
+            "timestamp": timestamp,
+            "level": level,
+            "message": message,
+        }
+        self.log_entries.append(entry)
+        if len(self.log_entries) > 2000:
+            self.log_entries.pop(0)
+
+        # 若符合當前篩選條件則追加顯示至終端
+        if self._matches_log_filter(entry):
+            self.txt_log.config(state="normal")
+            self.txt_log.insert("end", f"[{timestamp}] ", "timestamp")
+            self.txt_log.insert("end", f"{message}\n", level)
+            self.txt_log.see("end")
+            self.txt_log.config(state="disabled")
+
+        # 更新筆數標籤
+        total_count = len(self.log_entries)
+        visible_count = sum(1 for e in self.log_entries if self._matches_log_filter(e))
+        self.var_log_count.set(f"顯示: {visible_count} / {total_count} 筆")
 
     def _clear_logs(self):
-        """清空日誌文字"""
+        """清空日誌文字與歷史紀錄"""
+        self.log_entries.clear()
         self.txt_log.config(state="normal")
         self.txt_log.delete("1.0", "end")
         self.txt_log.config(state="disabled")
+        self.var_log_count.set("顯示: 0 / 0 筆")
+
+    def _export_logs(self):
+        """匯出當前篩選後的日誌為文字檔案"""
+        matching = [e for e in self.log_entries if self._matches_log_filter(e)]
+        if not matching:
+            messagebox.showinfo("提示", "目前沒有符合篩選條件的日誌可供匯出！", parent=self.root)
+            return
+
+        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"TimeSync_Log_{now_str}.txt"
+        file_path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="匯出校時日誌記錄",
+            initialfile=default_filename,
+            defaultextension=".txt",
+            filetypes=[
+                ("文字檔案 (*.txt)", "*.txt"),
+                ("日誌檔案 (*.log)", "*.log"),
+                ("所有檔案 (*.*)", "*.*"),
+            ],
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("=== Windows 自動校時工具 - 校時日誌記錄 ===\n")
+                f.write(f"匯出時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"篩選種類：{self.var_log_filter_level.get()}\n")
+                kw = self.var_log_search.get().strip()
+                if kw:
+                    f.write(f"搜尋關鍵字：{kw}\n")
+                f.write(f"記錄筆數：{len(matching)} 筆 (全部共 {len(self.log_entries)} 筆)\n")
+                f.write("-" * 60 + "\n\n")
+                for e in matching:
+                    lvl = e.get("level", "info").upper().ljust(7)
+                    f.write(f"[{e['timestamp']}] [{lvl}] {e['message']}\n")
+
+            messagebox.showinfo(
+                "匯出成功",
+                f"日誌已成功儲存至：\n{file_path}\n（共匯出 {len(matching)} 筆記錄）",
+                parent=self.root,
+            )
+        except Exception as ex:
+            messagebox.showerror(
+                "匯出失敗",
+                f"匯出日誌時發生錯誤：\n{ex}",
+                parent=self.root,
+            )
 
     def _update_live_clock(self):
         """每 200 毫秒刷新本地時鐘顯示"""
@@ -1096,6 +1472,7 @@ class ModernTimeSyncGUI:
             f"已成功套用設定：每 {val} {unit_str}{thresh_info}",
             level="success",
         )
+        self._update_settings_summary()
 
     def _on_server_selected(self, event=None):
         """選擇 NTP 伺服器選單事件"""
@@ -1108,6 +1485,7 @@ class ModernTimeSyncGUI:
             self.log(
                 f"已切換主要 NTP 伺服器為：{chosen['name']} ({host})", level="info"
             )
+            self._update_settings_summary()
 
     def _test_current_server_ping(self):
         """測試目前所選伺服器的連線延遲"""

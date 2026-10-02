@@ -221,6 +221,148 @@ class TestSystemTimeAndAutostart(unittest.TestCase):
         self.assertEqual(img.mode, "RGBA")
 
 
+class TestLogFilter(unittest.TestCase):
+    """日誌篩選與搜尋功能測試"""
+
+    def setUp(self):
+        import tkinter as tk
+        from gui import ModernTimeSyncGUI
+        self.root = tk.Tk()
+        self.root.withdraw()
+        # 建立簡化模擬物件以測試日誌篩選
+        self.dummy_gui = ModernTimeSyncGUI.__new__(ModernTimeSyncGUI)
+        self.dummy_gui.log_entries = []
+        self.dummy_gui.var_log_filter_level = tk.StringVar(value="全部種類")
+        self.dummy_gui.var_log_search = tk.StringVar(value="")
+        self.dummy_gui.var_log_count = tk.StringVar(value="顯示: 0 / 0 筆")
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def test_filter_all_types(self):
+        """測試全部種類篩選應匹配所有訊息"""
+        from gui import ModernTimeSyncGUI
+        self.dummy_gui.var_log_filter_level.set("全部種類")
+        entry_info = {"timestamp": "2026-10-02 14:00:00", "level": "info", "message": "啟動中"}
+        entry_err = {"timestamp": "2026-10-02 14:00:01", "level": "error", "message": "連線失敗"}
+        self.assertTrue(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_info))
+        self.assertTrue(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_err))
+
+    def test_filter_by_level(self):
+        """測試依據成功、資訊、警告、錯誤等級進行篩選"""
+        from gui import ModernTimeSyncGUI
+        entry_success = {"timestamp": "2026-10-02 14:00:00", "level": "success", "message": "校時成功"}
+        entry_info = {"timestamp": "2026-10-02 14:00:01", "level": "info", "message": "一般狀態"}
+        entry_warn = {"timestamp": "2026-10-02 14:00:02", "level": "warning", "message": "誤差小於閾值"}
+        entry_err = {"timestamp": "2026-10-02 14:00:03", "level": "error", "message": "伺服器超時"}
+
+        # 測試僅篩選成功
+        self.dummy_gui.var_log_filter_level.set("✅ 成功訊息 (Success)")
+        self.assertTrue(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_success))
+        self.assertFalse(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_info))
+        self.assertFalse(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_warn))
+        self.assertFalse(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_err))
+
+        # 測試僅篩選錯誤
+        self.dummy_gui.var_log_filter_level.set("❌ 錯誤異常 (Error)")
+        self.assertTrue(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_err))
+        self.assertFalse(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_success))
+
+    def test_filter_by_https_category(self):
+        """測試 HTTPS 備援種類篩選"""
+        from gui import ModernTimeSyncGUI
+        self.dummy_gui.var_log_filter_level.set("🌐 HTTPS 備援")
+        entry_https = {"timestamp": "2026-10-02 14:00:00", "level": "info", "message": "切換至 HTTPS 備援校時"}
+        entry_ntp = {"timestamp": "2026-10-02 14:00:01", "level": "info", "message": "標準 NTP 校時完成"}
+        self.assertTrue(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_https))
+        self.assertFalse(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry_ntp))
+
+    def test_filter_with_keyword_search(self):
+        """測試關鍵字不分大小寫即時過濾"""
+        from gui import ModernTimeSyncGUI
+        self.dummy_gui.var_log_filter_level.set("全部種類")
+        self.dummy_gui.var_log_search.set("google")
+        entry1 = {"timestamp": "2026-10-02 14:00:00", "level": "info", "message": "向 time.google.com 查詢"}
+        entry2 = {"timestamp": "2026-10-02 14:00:01", "level": "info", "message": "向 tock.stdtime.gov.tw 查詢"}
+        self.assertTrue(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry1))
+        self.assertFalse(ModernTimeSyncGUI._matches_log_filter(self.dummy_gui, entry2))
+
+
+class TestResponsiveLayout(unittest.TestCase):
+    """小螢幕自適應與響應式版面測試"""
+
+    def setUp(self):
+        import tkinter as tk
+        from gui import ModernTimeSyncGUI
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.gui = ModernTimeSyncGUI.__new__(ModernTimeSyncGUI)
+        self.gui.is_settings_collapsed = False
+        self.gui.is_log_maximized = False
+        self.gui.var_interval_val = tk.StringVar(value="15")
+        self.gui.var_unit_display = tk.StringVar(value="分鐘 (Minutes)")
+        self.gui.var_selected_server = tk.StringVar(value="time.google.com")
+        self.gui.var_threshold_enabled = tk.BooleanVar(value=True)
+        self.gui.var_threshold_sec = tk.StringVar(value="30")
+        self.gui.var_settings_summary = tk.StringVar(value="")
+
+        # 模擬 UI 元件容器
+        self.gui.settings_frame = tk.Frame(self.root)
+        self.gui.btn_toggle_settings = tk.Button(self.root)
+        self.gui.dashboard_card = tk.Frame(self.root)
+        self.gui.settings_container = tk.Frame(self.root)
+        self.gui.actions_card = tk.Frame(self.root)
+        self.gui.log_card = tk.Frame(self.root)
+        self.gui.btn_maximize_log = tk.Button(self.root)
+
+        # 預先 pack 以便測試 pack_forget 與 pack
+        self.gui.dashboard_card.pack()
+        self.gui.settings_container.pack()
+        self.gui.settings_frame.pack()
+        self.gui.actions_card.pack()
+        self.gui.log_card.pack()
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def test_settings_collapse_toggle(self):
+        """測試設定區域之收合與展開切換"""
+        from gui import ModernTimeSyncGUI
+        self.assertFalse(self.gui.is_settings_collapsed)
+        ModernTimeSyncGUI._toggle_settings_collapsed(self.gui)
+        self.assertTrue(self.gui.is_settings_collapsed)
+        self.assertEqual(self.gui.btn_toggle_settings["text"], "▼ 展開設定")
+
+        # 再次點擊還原展開
+        ModernTimeSyncGUI._toggle_settings_collapsed(self.gui)
+        self.assertFalse(self.gui.is_settings_collapsed)
+        self.assertEqual(self.gui.btn_toggle_settings["text"], "▲ 收合設定")
+
+    def test_log_focus_mode_toggle(self):
+        """測試日誌專注模式之全展開與還原切換"""
+        from gui import ModernTimeSyncGUI
+        self.assertFalse(self.gui.is_log_maximized)
+        ModernTimeSyncGUI._toggle_log_focus_mode(self.gui)
+        self.assertTrue(self.gui.is_log_maximized)
+        self.assertEqual(self.gui.btn_maximize_log["text"], "🗗 還原視圖")
+
+        # 再次點擊還原
+        ModernTimeSyncGUI._toggle_log_focus_mode(self.gui)
+        self.assertFalse(self.gui.is_log_maximized)
+        self.assertEqual(self.gui.btn_maximize_log["text"], "⛶ 展開視圖")
+
+    def test_settings_summary_generation(self):
+        """測試收合狀態之設定摘要字串產生"""
+        from gui import ModernTimeSyncGUI
+        ModernTimeSyncGUI._update_settings_summary(self.gui)
+        summary = self.gui.var_settings_summary.get()
+        self.assertIn("15 分鐘", summary)
+        self.assertIn("time.google.com", summary)
+        self.assertIn("30s", summary)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
 
