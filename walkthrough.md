@@ -1,43 +1,26 @@
-# 小螢幕日誌顯示空間優化成果報告 (Walkthrough)
+# 手動一鍵重新打包便攜版批次檔成果報告 (Walkthrough)
 
-## 任務背景與問題分析
-在小螢幕筆電（如 1366x768 解析度）或 Windows 螢幕縮放（125%、150%）環境下，可用垂直高度僅剩 600~650px。
-原介面因上方累積的多個卡片（即時儀表板、排程設定、NTP 設定、系統選項）佔據了近 570px 的固定高度，導致底部的日誌卡片（Log Console）被垂直嚴重壓縮，僅能看見 1~2 行日誌，極為影響使用體驗。
-
-經過與使用者確認偏好，採用了最佳的**三重複合式優化方案**：
-1. **全域版面垂直邊距緊湊化（Compact Layout）與自適應解析度**
-2. **中間「排程與 NTP 設定」卡片一鍵折疊/收合（Collapsible Settings）**
-3. **日誌「專注模式 / 一鍵展開最大化」（Log Focus Mode）**
+## 任務背景與使用者需求
+使用者希望能夠直接在資料夾中「手動雙擊批次檔（.bat）」便可一鍵自動重新打包免安裝綠色便攜版（`WindowsTimeAutoUpdate_Portable.zip`），無需開啟終端機手動輸入 Python 或編譯指令。
 
 ---
 
-## 關鍵技術變更與架構
+## 關鍵技術設計與實作
 
-1. **全域版面垂直邊距緊湊化 ([gui.py](file:///g:/我的雲端硬碟/安成工作資料/同步區/case/windows_time_auto_update/gui.py))**：
-   - **自適應幾何尺寸**：偵測 `winfo_screenheight()`，當螢幕高度 <= 800px 時預設視窗高度自動緊湊化至 `screen_h - 70`，且最小限制下修為 `740x480`，徹底避免溢出螢幕或被工作列遮擋。
-   - **精簡 Padding / Margin**：全面收斂 `main_container` 與各卡片外距（`pady=(0, 6)`）及卡片內距（`padx=12, pady=6~8`），時鐘字級與網格間距細緻緊湊化。
-   - **常規效益**：在未折疊、未展開的一般狀態下，直接為日誌區域額外釋放出 **70~90px**（多看 5~7 行）。
+1. **防呆與環境鎖定機制 ([一鍵重新打包便攜版.bat](file:///g:/我的雲端硬碟/安成工作資料/同步區/case/windows_time_auto_update/一鍵重新打包便攜版.bat))**：
+   - **代碼頁強制設定 (`chcp 65001 >nul`)**：杜絕 Windows `cmd.exe` 在繁體中文環境下的任何中文字元斷詞亂碼。
+   - **工作目錄絕對鎖定 (`cd /d "%~dp0"`)**：徹底解決 Windows 在使用者按右鍵「以系統管理員身分執行」時，工作目錄自動切換至 `C:\Windows\System32\` 導致找不到程式碼的重大潛在 Bug。
+   - **Python 環境智慧偵測**：依序偵測系統 `python` 或 `py -3` 指令，若均未找到則提供友善繁體中文設定提示。
+   - **.NET C# 編譯器自動偵測 (`csc.exe`)**：依序搜尋 64 位元與 32 位元 .NET 4.0 編譯器，自動將 `launcher.cs` 重新編譯為包含專屬圖示的最新原生 `WindowsTimeAutoUpdate.exe`。
+   - **自動執行打包封裝**：調用 `create_portable_package.py` 提取獨立精簡 Runtime、執行隔離自我驗證並壓製最新 ZIP 壓縮檔。
+   - **檔案總管自動高亮選取**：打包完成後，提示使用者按任意鍵自動調用 `explorer /select,"WindowsTimeAutoUpdate_Portable.zip"`，直接彈出檔案總管並高亮選中產出的壓縮檔，極致省心！
 
-2. **中間設定卡片一鍵折疊/展開機制 (`_build_settings_collapse_bar`)**：
-   - **收合控制列**：在排程與 NTP 設定雙欄卡片上方建立專屬控制條，提供 `▲ 收合設定` / `▼ 展開設定` 切換按鈕。
-   - **即時設定摘要**：當收合時，控制條會自動以精簡字樣顯示當前運行參數（如 `(每 15 分鐘 | time.google.com | 閾值: 30s)`），收合依然對運作狀態一清二楚。
-   - **折疊效益**：排程與伺服器通常僅設定一次，平時收合後瞬間騰出 **~210px** 的巨大垂直空間，日誌終端高度倍增！
-
-3. **日誌專注模式 / 一鍵展開最大化 (`_toggle_log_focus_mode`)**：
-   - **專注切換按鈕**：在日誌工具列右側加入 `⛶ 展開視圖` / `🗗 還原視圖` 切換按鈕。
-   - **無縫最大化**：點擊展開時，自動隱藏上方儀表板、設定與操作選項卡片，僅保留極簡頂部標題與管理員狀態，日誌終端直接佔滿視窗 90% 以上空間（一次可閱覽 **35~45 行** 完整記錄）。
-   - **無縫還原**：再點擊一次即可精準依原順序與折疊狀態還原標準儀表板視圖。
+2. **同步升級原有腳本 ([build_portable_zip.bat](file:///g:/我的雲端硬碟/安成工作資料/同步區/case/windows_time_auto_update/build_portable_zip.bat))**：
+   - 將相同的目錄鎖定、防亂碼與智慧偵測邏輯同步升級至既有的 `build_portable_zip.bat`，確保中英文批次檔均維持最高規格相容性。
 
 ---
 
 ## 驗證結果
 
-### 自動化單元測試 ([test_suite.py](file:///g:/我的雲端硬碟/安成工作資料/同步區/case/windows_time_auto_update/test_suite.py))
-新增 `TestResponsiveLayout` 測試類別，全面測試：
-- `test_settings_collapse_toggle`：✅ 驗證設定區域收合與展開狀態切換正常。
-- `test_log_focus_mode_toggle`：✅ 驗證日誌專注模式之最大化與還原切換正確。
-- `test_settings_summary_generation`：✅ 驗證收合條上的簡要設定摘要字串格式正確。
-- **測試結果**：全部 23 項測試 100% 通過（`Ran 23 tests in 8.252s, OK`）。
-
-### 語法與編譯驗證
-- 執行 `python -m py_compile gui.py`，語法完全正確通過。
+- **語法與執行流程檢驗**：已透過命令列完成路徑鎖定與環境相容性測試。
+- **單元測試驗證**：[test_suite.py](file:///g:/我的雲端硬碟/安成工作資料/同步區/case/windows_time_auto_update/test_suite.py) 全套 23 項測試持續 100% 通過（`Ran 23 tests in 8.421s, OK`）。

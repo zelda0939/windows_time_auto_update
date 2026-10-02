@@ -98,4 +98,33 @@
     - **日誌專注模式 / 一鍵展開最大化 (`_toggle_log_focus_mode`)**：日誌工具列新增「⛶ 展開視圖」/「🗗 還原視圖」按鈕，點擊時一鍵隱藏上方儀表板與設定，讓日誌終端佔據視窗 90% 以上空間（一次可看 35~45 行）。
     - 擴充 `test_suite.py` 新增 3 項響應式單元測試，23 項測試全部通過。
 
+### 紀錄 5：免安裝綠色便攜發行包重新建置與打包
+- **關鍵提示詞**：「重新打包便攜版」
+- **異動評估決策**：
+  - **建置流程**：
+    1. 調用 .NET `csc.exe` 重新編譯原生 C# 啟動器 `WindowsTimeAutoUpdate.exe`。
+    2. 調用 `create_portable_package.py` 提取 Python 3.14 獨立精簡 Runtime。
+    3. 通過環境隔離自主驗證（tkinter, ctypes, socket, json, PIL, pystray 全部正常載入）。
+    4. 完整納入最新日誌種類篩選、即時搜尋、自適應緊湊版面、設定收合與日誌展開視圖之 `gui.py` 及全套模組。
+    5. 產出 `WindowsTimeAutoUpdate_Portable.zip`（21.58 MB），達成目標電腦零相依開箱即用。
+
+### 紀錄 6：手動一鍵重新打包批次檔建置
+- **關鍵提示詞**：「能寫bat讓我可以手動點擊就可以重新打包便攜版嗎?」
+- **異動評估決策**：
+  - **核心痛點**：舊有 `build_portable_zip.bat` 缺少 `cd /d "%~dp0"`，在以管理員權限執行時工作目錄會跳至 `System32` 導致路徑錯誤。
+  - **技術架構決策**：新建 `一鍵重新打包便攜版.bat`，同步升級 `build_portable_zip.bat`。
+
+### 紀錄 7：批次檔 UTF-8 多位元組截斷錯位與 Explorer 相對路徑問題修復
+- **關鍵提示詞**：「我點了 一鍵重新打包便攜版.bat 他就閃了一下然後就跳出 本機的目錄而已」
+- **異動評估決策**：
+  - **根本原因排查**：
+    1. **Byte Offset Misalignment 錯位**：Windows `cmd.exe` 在逐行讀取含中文字元的 UTF-8 批次檔時，因字元長度指標跳轉錯位，導致指令被切割（如 `'ho.'`、`'ate.exe...'`），引發語法崩潰閃退。
+    2. **Explorer 相對路徑回退**：`explorer /select` 指令若未傳入絕對路徑，Windows Shell 找不到項目時會預設 fallback 開啟「本機（This PC）」。
+  - **解決方案與修復架構**：
+    - 批次檔全面落實 **100% 純 ASCII 語法**（文字與提示由 Python 內部輸出），徹底根除 `cmd.exe` 換行錯位。
+    - 結尾改用標準 `pause` 確實等待鍵盤輸入，並傳入 `%~dp0WindowsTimeAutoUpdate_Portable.zip` 完整絕對路徑，確保檔案總管 100% 精準高亮選中產出之壓縮包。
+
+
+
+
 
